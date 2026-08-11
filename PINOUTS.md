@@ -59,35 +59,39 @@ ToF board extra pins (XSHUT / GPIO1 / INT): leave unconnected.
 
 ## Teensy pins: the 16 knobs
 
-Every knob (rotary encoder) has 3 signal legs: two outer signal wires and the middle leg.
+Every knob (rotary encoder) has 3 signal legs:
 
-- Middle leg: **GND**
-- The two outer legs: the pin pair below (either orientation gets it turning; see "Backwards knob?" for the fix if the direction is wrong)
+- **Middle leg: GND** (always)
+- **YELLOW wire** (the one with the yellow marker) and **RED wire**: exact pins below. The colors are NOT interchangeable, the firmware expects exactly this. Wire it colorblind-perfect and every knob turns the right way with zero fixes.
 
-| Knob | Where it is | Pin pair |
-|---|---|---|
-| FL | Faucet left (cold) | 2, 3 |
-| FR | Faucet right (hot) | 4, 5 |
-| FC | Faucet center (shifter/filter) | 6, 7 |
-| RBL | Hot ox (right rack), bottom-left | 8, 9 |
-| RBR | Hot ox, bottom-right | 10, 11 |
-| RUR | Hot ox, upper-right | **12 and 36** (NOT 13, see warning) |
-| RUL | Hot ox, upper-left | 14, 15 |
-| LUL | Cold ox (left rack), upper-left | 16, 17 |
-| LUR | Cold ox, upper-right | 20, 21 |
-| LBR | Cold ox, bottom-right | 22, 23 |
-| LBL | Cold ox, bottom-left | 24, 25 |
-| JUL | Jacuzzi, upper-left | 26, 27 |
-| JUR | Jacuzzi, upper-right | 28, 29 |
-| JBL | Jacuzzi, bottom-left | 30, 31 |
-| JBR | Jacuzzi, bottom-right | 32, 33 |
-| JC | Jacuzzi center (the timer) | 34, 35 |
+| Knob | Where it is | YELLOW pin | RED pin |
+|---|---|---|---|
+| FL | Faucet left (cold) | **2** | **3** |
+| FR | Faucet right (hot) | **4** | **5** |
+| FC | Faucet center (shifter/filter) | **6** | **7** |
+| RBL | Hot ox (right rack), bottom-left | **8** | **9** |
+| RBR | Hot ox, bottom-right | **11** | **10** |
+| RUR | Hot ox, upper-right | **12** | **36** (NOT 13, see warning) |
+| RUL | Hot ox, upper-left | **14** | **15** |
+| LUL | Cold ox (left rack), upper-left | **16** | **17** |
+| LUR | Cold ox, upper-right | **21** | **20** |
+| LBR | Cold ox, bottom-right | **23** | **22** |
+| LBL | Cold ox, bottom-left | **25** | **24** |
+| JUL | Jacuzzi, upper-left | **27** | **26** |
+| JUR | Jacuzzi, upper-right | **28** | **29** |
+| JBL | Jacuzzi, bottom-left | **31** | **30** |
+| JBR | Jacuzzi, bottom-right | **32** | **33** |
+| JC | Jacuzzi center (the timer) | **35** | **34** |
+
+Read each row carefully: on some knobs the yellow pin number is HIGHER than the red one. That is intentional. Follow the table, not a pattern.
+
+This table was verified against the fully working bench build on 2026-08-11.
 
 **WARNING: Teensy pin 13 must never be used for a knob.** The board's onboard LED is tied to it and kills the signal (the knob will only count one direction). That is why RUR lives on 12 + 36.
 
 ## Backwards knob?
 
-The firmware contains per-knob direction flips matched to how the wires happened to be attached on the bench. If a knob counts the wrong way after reassembly, you do not need a computer: **swap that knob's two outer signal wires with each other at the Teensy end.** (Swapping the two wires reverses the direction. The middle/GND leg stays put.)
+If the colors are wired exactly per the table, this should not happen. But if a knob does count the wrong way (mislabeled wire, replaced encoder), the fix needs no computer: **swap that knob's yellow and red wires with each other at the Teensy end.** The middle/GND leg stays put. If a knob only counts in ONE direction no matter what, one of its two signal wires is loose (or landed on pin 13).
 
 ## Quick health check after assembly
 
