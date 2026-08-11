@@ -1,0 +1,19 @@
+# OS noise
+.DS_Store
+
+# AI-assistant working files, not for the public repo
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+AGENTS.md
+.cursorrules
+
+# Internal working docs and task prompts (delete these two lines if
+# collaborators should see the spec/protocol docs on GitHub)
+docs/
+tasks/
+
+# Build artifacts
+build/
+*.hex
+*.elf

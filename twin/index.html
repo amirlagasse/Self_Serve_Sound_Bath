@@ -1,0 +1,1751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tub Lighting — Digital Twin</title>
+<style>
+  :root {
+    --bg:        #0a0c0f;
+    --panel-bg:  #101317;
+    --line:      #262b32;
+    --line-dim:  #1a1e23;
+    --text:      #c9d1d9;
+    --text-dim:  #6b7280;
+    --amber:     #e8a33d;
+    --cyan:      #4dd0e1;
+    --red:       #e05252;
+    --green:     #5ec98a;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    height: 100%;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  button { font-family: var(--mono); }
+
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-bg);
+  }
+  #topbar h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    margin: 0;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+  #topbar .spacer { flex: 1; }
+
+  #tabbar {
+    display: flex;
+    gap: 2px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-bg);
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    padding: 9px 14px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+  .btn {
+    background: #171a1f;
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+  }
+  .btn:hover { border-color: #3a4048; }
+  .btn:active { background: #1c2128; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.small { padding: 2px 6px; font-size: 11px; }
+  .btn.on-idle.active   { border-color: var(--amber); color: var(--amber); }
+  .btn.on-active.active { border-color: var(--cyan); color: var(--cyan); }
+
+  #status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red);
+    display: inline-block;
+    margin-right: 6px;
+  }
+  #status-dot.connected { background: var(--green); }
+  #status-text { color: var(--text-dim); }
+
+  #teensy-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red);
+    display: inline-block;
+    margin-right: 6px;
+  }
+  #teensy-dot.connected { background: var(--green); }
+  #teensy-text { color: var(--text-dim); }
+
+  #fps { color: var(--text-dim); min-width: 90px; text-align: right; }
+
+  #main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  #sidebar {
+    width: 320px;
+    min-width: 320px;
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    background: var(--panel-bg);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  fieldset.rack {
+    border: 1px solid var(--line);
+    padding: 8px 10px 10px;
+    margin: 0;
+  }
+  fieldset.rack legend {
+    padding: 0 6px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  .knob-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+  }
+  .knob-row label {
+    width: 76px;
+    flex-shrink: 0;
+    color: var(--text-dim);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dial {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    cursor: ns-resize;
+    touch-action: none;
+    user-select: none;
+  }
+  .dial svg { display: block; }
+  .dial .dial-track { stroke: var(--line); fill: none; stroke-width: 3.5; }
+  .dial .dial-fill   { stroke: var(--cyan); fill: none; stroke-width: 3.5; stroke-linecap: round; }
+  .dial .dial-value  {
+    fill: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-anchor: middle;
+  }
+  .dial.dragging .dial-fill { stroke: var(--amber); }
+
+  fieldset.rack.locked { opacity: 0.45; }
+  fieldset.rack.locked .dial { pointer-events: none; cursor: default; }
+
+  #mode-status {
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+  #mode-status-bar {
+    height: 3px;
+    background: var(--line-dim);
+    margin-top: 5px;
+    display: none;
+  }
+  #mode-status-bar.on { display: block; }
+  #mode-status-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--amber);
+  }
+
+  #chk-fails { color: var(--text-dim); }
+  #chk-fails.bad { color: var(--red); }
+
+  #tof-row { display: flex; align-items: baseline; gap: 10px; }
+  #tof-dist { font-size: 20px; color: var(--text); }
+  #tof-state { font-size: 10px; color: var(--text-dim); letter-spacing: 0.05em; }
+  #tof-state.present { color: var(--green); }
+  #tof-bar {
+    height: 5px;
+    background: var(--line-dim);
+    margin-top: 7px;
+    display: none;
+  }
+  #tof-bar.on { display: block; }
+  #tof-fill { height: 100%; width: 0%; background: var(--amber); }
+  #tof-count {
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    min-height: 12px;
+  }
+
+  #mode-row { display: flex; gap: 8px; }
+  #mode-row .btn { flex: 1; }
+
+  #center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  #viewer-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    min-height: 0;
+    padding: 12px;
+  }
+  #viewer {
+    background: #050607;
+    border: 1px solid var(--line-dim);
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  #log-wrap {
+    height: 220px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    background: var(--panel-bg);
+  }
+  .log-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .log-col + .log-col { border-left: 1px solid var(--line); }
+  .log-col h2 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin: 0;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line-dim);
+  }
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .log-line { white-space: pre; color: var(--text-dim); }
+  .log-line.ok { color: var(--text); }
+  .log-line.fail { color: var(--red); }
+
+  #serial-warning {
+    display: none;
+    padding: 24px;
+    color: var(--red);
+    max-width: 480px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>Tub Lighting — Digital Twin</h1>
+  <button id="btn-connect" class="btn">Connect</button>
+  <span><span id="status-dot"></span><span id="status-text">disconnected</span></span>
+  <button id="btn-teensy" class="btn">Connect Teensy</button>
+  <span><span id="teensy-dot"></span><span id="teensy-text">no teensy</span></span>
+  <div class="spacer"></div>
+  <span id="chk-fails">chk fails: 0</span>
+  <span id="fps">-- fps</span>
+</div>
+
+<div id="tabbar">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="faucet">Faucet</button>
+  <button class="tab-btn" data-tab="auxr">Hot Ox</button>
+  <button class="tab-btn" data-tab="auxl">Cold Ox</button>
+  <button class="tab-btn" data-tab="jets">Jacuzzi</button>
+</div>
+
+<div id="serial-warning">
+  This browser does not support WebSerial. Open this page in Chrome or Edge.
+  Safari and Firefox cannot talk to the Arduino.
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <fieldset class="rack" data-rack="mode">
+      <legend>Mode</legend>
+      <div id="mode-row">
+        <button class="btn on-idle" data-mode="0">Idle</button>
+        <button class="btn on-active" data-mode="1">Active</button>
+      </div>
+      <div id="mode-status">
+        <span id="mode-status-text">connect to begin</span>
+        <div id="mode-status-bar"><div id="mode-status-fill"></div></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="rack" id="sensor-box">
+      <legend>Sensor</legend>
+      <div id="tof-row">
+        <span id="tof-dist">--</span>
+        <span id="tof-state">no data</span>
+      </div>
+      <div id="tof-bar"><div id="tof-fill"></div></div>
+      <div id="tof-count"></div>
+    </fieldset>
+
+    <fieldset class="rack" data-rack="faucet">
+      <legend>Faucet</legend>
+      <div id="rack-faucet"></div>
+    </fieldset>
+
+    <fieldset class="rack" data-rack="auxr">
+      <legend>Hot Ox (Right)</legend>
+      <div id="rack-auxr"></div>
+    </fieldset>
+
+    <fieldset class="rack" data-rack="auxl">
+      <legend>Cold Ox (Left)</legend>
+      <div id="rack-auxl"></div>
+    </fieldset>
+
+    <fieldset class="rack" data-rack="jets">
+      <legend>Jacuzzi</legend>
+      <div id="rack-jets"></div>
+    </fieldset>
+  </div>
+
+  <div id="center">
+    <div id="viewer-wrap">
+      <canvas id="viewer" width="900" height="560"></canvas>
+    </div>
+    <div id="log-wrap">
+      <div class="log-col">
+        <h2>Outbound (browser to Uno)</h2>
+        <div class="log-body" id="log-out"></div>
+      </div>
+      <div class="log-col">
+        <h2>Inbound (Uno to browser)</h2>
+        <div class="log-body" id="log-in"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ===========================================================================
+// Protocol constants. Mirrors firmware/render_core.h and docs/PROTOCOL.md.
+// ===========================================================================
+
+const N_UNDER = 160, N_POLE = 100, N_PANEL = 48; // pole was 110, now 100
+const N_TOTAL = N_UNDER + N_POLE + N_PANEL; // 318
+const OFF_UNDER = 0, OFF_POLE = N_UNDER, OFF_PANEL = N_UNDER + N_POLE;
+
+const N_FAUCET = 9, N_AUXL = 12, N_AUXR = 12, N_JETS = 15;
+
+const N_ENCODERS = 16;
+
+// Encoder ids 3-6 drive the physical RIGHT aux rack (first in the LED
+// chain) and 7-10 the LEFT rack, confirmed against hardware.
+//
+// NAMING SCHEME: faucet knobs are FL / FR / FC (left, right, center).
+// The aux racks are the OX racks: L* = cold ox (left), R* = hot ox
+// (right), then position UL / UR / BL / BR. The jets rack is the JACUZZI:
+// JUL / JUR / JBL / JBR around JC (center, the timer). Jacuzzi outer
+// positions are PROVISIONAL until the rack order is confirmed on
+// hardware. Sound-side names from Nile kept in parens; ??? still unnamed.
+const KNOBS = [
+  { id: 0,  label: "FL (Cold)",         rack: "faucet" },
+  { id: 1,  label: "FR (Hot)",          rack: "faucet" },
+  { id: 2,  label: "FC (Filter)",       rack: "faucet" },
+  { id: 3,  label: "RBL (Transform X)", rack: "auxr" },   // red, bottom-left
+  { id: 4,  label: "RBR (???)",         rack: "auxr" },   // green, bottom-right
+  { id: 5,  label: "RUR (Pitch)",       rack: "auxr" },   // purple, top-right
+  { id: 6,  label: "RUL (???)",         rack: "auxr" },   // yellow, top-left
+  { id: 7,  label: "LUL (Pitch)",       rack: "auxl" },   // blue, top-left
+  { id: 8,  label: "LUR (???)",         rack: "auxl" },   // orange, top-right
+  { id: 9,  label: "LBR (Transform X)", rack: "auxl" },   // aqua, bottom-right
+  { id: 10, label: "LBL (???)",         rack: "auxl" },   // pink, bottom-left
+  { id: 11, label: "JUL",               rack: "jets" },   // PROVISIONAL position
+  { id: 12, label: "JUR",               rack: "jets" },   // PROVISIONAL position
+  { id: 13, label: "JBL",               rack: "jets" },   // PROVISIONAL position
+  { id: 14, label: "JBR",               rack: "jets" },   // PROVISIONAL position
+  { id: 15, label: "JC (Timer)",        rack: "jets" },
+];
+
+// ===========================================================================
+// Outbound packet builders. Every packet: [0xAA] [TYPE] [PAYLOAD...] [XOR]
+// XOR covers every byte after the start byte.
+// ===========================================================================
+
+function buildPacket(type, payload) {
+  const bytes = [type, ...payload];
+  let xor = 0;
+  for (const b of bytes) xor ^= b;
+  return new Uint8Array([0xAA, ...bytes, xor]);
+}
+
+function toSignedByte(v) {
+  // Two's complement encoding of a signed delta in [-128, 127].
+  return v < 0 ? (256 + v) : v;
+}
+
+function buildModePacket(mode) {
+  return buildPacket(0x01, [mode]);
+}
+
+function buildEncoderPacket(id, delta) {
+  return buildPacket(0x02, [id, toSignedByte(delta)]);
+}
+
+// ===========================================================================
+// Serial link
+// ===========================================================================
+
+const link = {
+  port: null,
+  reader: null,
+  writer: null,
+  connected: false,
+};
+
+async function connect() {
+  if (!("serial" in navigator)) return;
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    link.port = port;
+    link.writer = port.writable.getWriter();
+    link.connected = true;
+    setStatus(true);
+    // Opening the port toggles DTR, which resets the Uno: it reruns its
+    // lamp test and lands in ST_WAITING with default encoder positions.
+    // Snap this side's mirror to the same defaults; board truth arrives
+    // via status packets within ~100ms and takes over from there.
+    resetKnobMirror();
+    boardMode = null;
+    boardTransitioning = false;
+    desiredMode = null;
+    if (modeRetryTimer) { clearTimeout(modeRetryTimer); modeRetryTimer = null; }
+    document.querySelectorAll("#mode-row .btn").forEach(b => b.classList.remove("active"));
+    setModeStatusText("waiting for board status...");
+    refreshLockUi();
+    readLoop();
+  } catch (err) {
+    console.error("connect failed", err);
+  }
+}
+
+async function disconnect() {
+  link.connected = false;
+  try { if (link.reader) await link.reader.cancel(); } catch (e) {}
+  try { if (link.writer) { link.writer.releaseLock(); } } catch (e) {}
+  try { if (link.port) await link.port.close(); } catch (e) {}
+  link.port = null;
+  link.reader = null;
+  link.writer = null;
+  setStatus(false);
+}
+
+async function readLoop() {
+  const reader = link.port.readable.getReader();
+  link.reader = reader;
+  try {
+    while (link.connected) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) feedInbound(value);
+    }
+  } catch (err) {
+    console.error("read loop ended", err);
+  } finally {
+    try { reader.releaseLock(); } catch (e) {}
+    if (link.connected) await disconnect();
+  }
+}
+
+async function sendPacket(bytes) {
+  if (!link.connected || !link.writer) return;
+  try {
+    await link.writer.write(bytes);
+    logOutbound(bytes);
+  } catch (err) {
+    console.error("write failed", err);
+  }
+}
+
+function setStatus(connected) {
+  const dot = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+  dot.classList.toggle("connected", connected);
+  text.textContent = connected ? "connected" : "disconnected";
+  document.getElementById("btn-connect").textContent = connected ? "Disconnect" : "Connect";
+  if (!connected) {
+    // Knobs are meaningless without a board on the other end.
+    boardMode = null;
+    boardTransitioning = false;
+    lockActive = false;
+    hideLockBar();
+    setModeStatusText("connect to begin");
+    refreshLockUi();
+  }
+}
+
+// ===========================================================================
+// Second link: the Teensy's USB serial. When the Teensy's TX wire is
+// attached to the Uno's RX pin, it electrically owns that line and mode
+// packets from this page can no longer reach the Uno directly. Instead
+// the mode buttons send a one-character command ('0' idle, '1' active)
+// to the Teensy, which transmits the real protocol packets. The twin
+// acts as the occupancy sensor while the ToF is not wired.
+//
+// Dial ticks route the same way: 'e' + id byte + signed delta byte. The
+// Teensy runs them through its real knob model (so MIDI stays locked to
+// the lights) and transmits genuine encoder packets down the wire, which
+// lets the on-screen dials stand in for encoders that are not wired yet.
+// ===========================================================================
+
+const teensyLink = { port: null, writer: null, reader: null, connected: false };
+
+async function connectTeensy() {
+  if (!("serial" in navigator)) return;
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    teensyLink.port = port;
+    teensyLink.writer = port.writable.getWriter();
+    teensyLink.connected = true;
+    setTeensyStatus(true);
+    teensyReadLoop();
+  } catch (err) {
+    console.error("teensy connect failed", err);
+  }
+}
+
+async function disconnectTeensy() {
+  teensyLink.connected = false;
+  try { if (teensyLink.reader) await teensyLink.reader.cancel(); } catch (e) {}
+  try { if (teensyLink.writer) teensyLink.writer.releaseLock(); } catch (e) {}
+  try { if (teensyLink.port) await teensyLink.port.close(); } catch (e) {}
+  teensyLink.port = null;
+  teensyLink.reader = null;
+  teensyLink.writer = null;
+  setTeensyStatus(false);
+}
+
+async function teensyReadLoop() {
+  // The Teensy's debug chatter is mostly discarded, but "$tof ..." lines
+  // (10 Hz sensor telemetry) feed the live sensor panel.
+  const reader = teensyLink.port.readable.getReader();
+  teensyLink.reader = reader;
+  const decoder = new TextDecoder();
+  let lineBuf = "";
+  try {
+    while (teensyLink.connected) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      lineBuf += decoder.decode(value, { stream: true });
+      if (lineBuf.length > 4000) lineBuf = lineBuf.slice(-1000); // runaway guard
+      let nl;
+      while ((nl = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.slice(0, nl).trim();
+        lineBuf = lineBuf.slice(nl + 1);
+        if (line.startsWith("$tof ")) handleTofTelemetry(line);
+      }
+    }
+  } catch (err) {
+    console.error("teensy read loop ended", err);
+  } finally {
+    try { reader.releaseLock(); } catch (e) {}
+    if (teensyLink.connected) await disconnectTeensy();
+  }
+}
+
+// --- Live sensor panel -----------------------------------------------------
+// Telemetry line: $tof <mm|-1> <valid> <present> <streakMs> <mode> <enter> <exit>
+let tofLastSeenMs = 0;
+
+function handleTofTelemetry(line) {
+  const f = line.split(/\s+/).map(Number);
+  if (f.length < 8 || Number.isNaN(f[1])) return;
+  const [, mm, valid, present, streak, mode, enterHold, exitHold] = f;
+  tofLastSeenMs = performance.now();
+
+  const dist = document.getElementById("tof-dist");
+  const state = document.getElementById("tof-state");
+  const bar = document.getElementById("tof-bar");
+  const fill = document.getElementById("tof-fill");
+  const count = document.getElementById("tof-count");
+
+  if (mm < 0) {
+    dist.textContent = "--";
+    state.textContent = "sensor offline";
+    state.classList.remove("present");
+    bar.classList.remove("on");
+    count.textContent = "";
+    return;
+  }
+
+  dist.textContent = (mm / 10).toFixed(0) + " cm";
+  state.textContent = present ? "present" : "absent";
+  state.classList.toggle("present", !!present);
+
+  // Arming: IDLE + present counts toward ACTIVE, ACTIVE + absent toward IDLE.
+  let target = 0, label = "";
+  if (mode === 0 && present) { target = enterHold; label = "ACTIVE"; }
+  if (mode === 1 && !present) { target = exitHold; label = "IDLE"; }
+
+  if (target > 0 && streak < target) {
+    bar.classList.add("on");
+    fill.style.width = `${Math.min(100, (streak / target) * 100).toFixed(1)}%`;
+    count.textContent = `${label} in ${((target - streak) / 1000).toFixed(1)}s`;
+  } else {
+    bar.classList.remove("on");
+    count.textContent = target > 0 ? `switching to ${label}...` : "steady";
+  }
+}
+
+// Stale-data watchdog: telemetry is 10 Hz, so a second of silence means
+// the Teensy link is gone or busy.
+setInterval(() => {
+  if (tofLastSeenMs && performance.now() - tofLastSeenMs > 1500) {
+    tofLastSeenMs = 0;
+    document.getElementById("tof-dist").textContent = "--";
+    const state = document.getElementById("tof-state");
+    state.textContent = "no data";
+    state.classList.remove("present");
+    document.getElementById("tof-bar").classList.remove("on");
+    document.getElementById("tof-count").textContent = "";
+  }
+}, 500);
+
+function setTeensyStatus(connected) {
+  document.getElementById("teensy-dot").classList.toggle("connected", connected);
+  document.getElementById("teensy-text").textContent = connected ? "teensy" : "no teensy";
+  document.getElementById("btn-teensy").textContent = connected ? "Drop Teensy" : "Connect Teensy";
+}
+
+async function teensySendModeCommand(mode) {
+  if (!teensyLink.connected || !teensyLink.writer) return false;
+  try {
+    await teensyLink.writer.write(new TextEncoder().encode(mode === 1 ? "1" : "0"));
+    return true;
+  } catch (err) {
+    console.error("teensy write failed", err);
+    return false;
+  }
+}
+
+async function teensySendEncoder(id, delta) {
+  if (!teensyLink.connected || !teensyLink.writer) return false;
+  try {
+    // 'e' <id> <two's-complement delta>, matching handleUsbCommands().
+    await teensyLink.writer.write(new Uint8Array([0x65, id, toSignedByte(delta)]));
+    return true;
+  } catch (err) {
+    console.error("teensy write failed", err);
+    return false;
+  }
+}
+
+// ===========================================================================
+// Inbound parser: state machine over a rolling byte buffer.
+// One message type inbound: 0xAB 0x80, framebuffer dump, 954-byte payload.
+// ===========================================================================
+
+const DUMP_PAYLOAD_LEN = N_TOTAL * 3; // 924
+const DUMP_PACKET_LEN = 1 + 1 + DUMP_PAYLOAD_LEN + 1; // start + type + payload + xor
+const STATUS_PAYLOAD_LEN = 18; // 16 encoder positions + mode + flags
+const STATUS_PACKET_LEN = 1 + 1 + STATUS_PAYLOAD_LEN + 1;
+
+let rxBuffer = [];
+
+function feedInbound(chunk) {
+  for (let i = 0; i < chunk.length; i++) rxBuffer.push(chunk[i]);
+  // Safety cap: a pathological desync must not grow the buffer forever.
+  const MAX_RX_BUFFER = DUMP_PACKET_LEN * 4;
+  if (rxBuffer.length > MAX_RX_BUFFER) rxBuffer.splice(0, rxBuffer.length - DUMP_PACKET_LEN);
+  processInbound();
+}
+
+function processInbound() {
+  for (;;) {
+    const startIdx = rxBuffer.indexOf(0xAB);
+    if (startIdx === -1) {
+      rxBuffer.length = 0;
+      return;
+    }
+    if (startIdx > 0) rxBuffer.splice(0, startIdx);
+
+    if (rxBuffer.length < 2) return; // need the type byte
+
+    const type = rxBuffer[1];
+    let packetLen, payloadLen;
+    if (type === 0x80) { packetLen = DUMP_PACKET_LEN; payloadLen = DUMP_PAYLOAD_LEN; }
+    else if (type === 0x81) { packetLen = STATUS_PACKET_LEN; payloadLen = STATUS_PAYLOAD_LEN; }
+    else {
+      // Not a message we know. Drop the start byte and resync.
+      rxBuffer.splice(0, 1);
+      continue;
+    }
+
+    if (rxBuffer.length < packetLen) return; // wait for the rest
+
+    const payload = rxBuffer.slice(2, 2 + payloadLen);
+    const xorByte = rxBuffer[2 + payloadLen];
+
+    let sum = type;
+    for (const b of payload) sum ^= b;
+    const ok = sum === xorByte;
+
+    // Dumps are logged every time; status packets arrive at 10 Hz and
+    // would drown the log, so they are only logged on failure.
+    if (type === 0x80 || !ok) logInbound(type, xorByte, ok);
+
+    if (ok) {
+      if (type === 0x80) {
+        renderFramebuffer(payload);
+        tickFps();
+      } else {
+        handleBoardStatus(payload);
+      }
+      rxBuffer.splice(0, packetLen);
+    } else {
+      // A bad checksum usually means this 0xAB was payload data, not a
+      // packet start (desync after a reconnect mid-stream). Drop one byte
+      // and rescan: discarding a whole packet's worth here could throw
+      // away the real packet boundary sitting inside it.
+      rxBuffer.splice(0, 1);
+    }
+  }
+}
+
+// ===========================================================================
+// Traffic log
+// ===========================================================================
+
+const LOG_MAX = 20;
+const outLog = [];
+const inLog = [];
+
+function hex(n) { return n.toString(16).padStart(2, "0"); }
+
+function logOutbound(bytes) {
+  const line = Array.from(bytes).map(hex).join(" ");
+  outLog.unshift({ line, ok: true });
+  if (outLog.length > LOG_MAX) outLog.pop();
+  renderLog("log-out", outLog);
+}
+
+let chkFailCount = 0;
+
+function logInbound(type, xorByte, ok) {
+  // Full payloads are not useful in a text log; summarize them.
+  const body = type === 0x81 ? "[status]" : `[${DUMP_PAYLOAD_LEN}B RGB]`;
+  const line = `ab ${hex(type)} ${body} xor=${hex(xorByte)} ${ok ? "OK" : "FAIL"}`;
+  inLog.unshift({ line, ok });
+  if (inLog.length > LOG_MAX) inLog.pop();
+  renderLog("log-in", inLog);
+
+  if (!ok) {
+    chkFailCount++;
+    const el = document.getElementById("chk-fails");
+    el.textContent = `chk fails: ${chkFailCount}`;
+    el.classList.add("bad");
+  }
+}
+
+function renderLog(elId, entries) {
+  const el = document.getElementById(elId);
+  el.innerHTML = entries
+    .map(e => `<div class="log-line ${e.ok ? "ok" : "fail"}">${e.line}</div>`)
+    .join("");
+}
+
+// ===========================================================================
+// FPS readout, measured from inbound dump arrivals
+// ===========================================================================
+
+const fpsTimes = [];
+function tickFps() {
+  const now = performance.now();
+  fpsTimes.push(now);
+  while (fpsTimes.length > 10) fpsTimes.shift();
+  if (fpsTimes.length >= 2) {
+    const dt = (fpsTimes[fpsTimes.length - 1] - fpsTimes[0]) / 1000;
+    const fps = (fpsTimes.length - 1) / dt;
+    document.getElementById("fps").textContent = fps.toFixed(1) + " fps";
+  }
+}
+
+// ===========================================================================
+// Encoder controls
+// ===========================================================================
+
+// Every encoder defaults to 0 except the faucet filter (id 2), which is
+// bidirectional around a center detent: 128 is its neutral, matching the
+// firmware's resetEncoderPositions() in tub.ino.
+// Default positions in rotation units (MIDI default x2), matching
+// resetEncoderPositions() in tub.ino exactly: faucet cold/hot/filter and
+// both Pitch knobs at center 128, Transform X and the unnamed knobs at 0.
+const KNOB_DEFAULTS = { 0: 128, 1: 128, 2: 128, 5: 128, 7: 128 };
+function defaultKnobValue(id) { return KNOB_DEFAULTS[id] || 0; }
+
+// --- Endless-encoder model -------------------------------------------------
+// The real knobs are rotary encoders: they spin forever and only ever emit
+// ticks. The dials here do the same. A drag produces raw signed ticks with
+// no bounds; the board clamps its accumulated position to 0-255 internally.
+// `predicted` mirrors that clamp for display only, and the board's 0x81
+// status packets (10 Hz) continuously overwrite it with the true positions,
+// so any delta lost on the wire heals within ~100ms instead of diverging
+// forever.
+const SEND_BATCH_MS = 20; // Teensy batches ticks over 20-30ms; mirror that
+const predicted = KNOBS.map(k => defaultKnobValue(k.id));
+const pendingDelta = new Array(N_ENCODERS).fill(0);
+const dragActive = new Array(N_ENCODERS).fill(false);
+let batchTimer = null;
+
+function flushEncoderBatch() {
+  batchTimer = null;
+  for (let id = 0; id < N_ENCODERS; id++) {
+    let d = pendingDelta[id];
+    if (d === 0) continue;
+    pendingDelta[id] = 0;
+    if (!link.connected) continue;
+    while (d !== 0) {
+      const step = Math.max(-128, Math.min(127, d));
+      if (teensyLink.connected) {
+        // The Teensy owns the Uno's RX line; inject the ticks there and it
+        // sends the real packets (and matching MIDI) down the wire.
+        teensySendEncoder(id, step);
+      } else {
+        sendPacket(buildEncoderPacket(id, step));
+      }
+      d -= step;
+    }
+  }
+}
+
+// Raw ticks in, no bounds. Queues the delta for the next batch window and
+// moves the local prediction with the same clamp the firmware applies.
+function nudgeEncoder(id, rawDelta) {
+  if (!link.connected || rawDelta === 0) return;
+  pendingDelta[id] += rawDelta;
+  predicted[id] = Math.max(0, Math.min(255, predicted[id] + rawDelta));
+  if (knobControls[id]) knobControls[id].display(predicted[id]);
+  if (!batchTimer) batchTimer = setTimeout(flushEncoderBatch, SEND_BATCH_MS);
+}
+
+// --- Board truth (from 0x81 status packets) --------------------------------
+let boardMode = null;          // 0, 1, 0xFF = board waiting, null = no status yet
+let boardTransitioning = false;
+let lockActive = false;
+let lockStartMs = 0;
+let lockBarTimer = null;
+
+const TRANSITION_ESTIMATE_MS = 5000; // TRANSITION_MS in render_core.h, bar only
+
+function modeName(m) { return m === 0 ? "IDLE" : m === 1 ? "ACTIVE" : "?"; }
+
+function encodersLocked() {
+  // Locked in IDLE too: the firmware discards encoder deltas there, so an
+  // unlocked dial would just spin and snap back as status packets heal it.
+  return !link.connected || boardMode !== 1 || boardTransitioning;
+}
+
+function setLockedUi(locked) {
+  document.querySelectorAll('#sidebar fieldset[data-rack]:not([data-rack="mode"])').forEach(fs => {
+    fs.classList.toggle("locked", locked);
+  });
+}
+
+function refreshLockUi() {
+  setLockedUi(encodersLocked());
+}
+
+function setModeStatusText(text) {
+  document.getElementById("mode-status-text").textContent = text;
+}
+
+function showLockBar() {
+  lockStartMs = performance.now();
+  const bar = document.getElementById("mode-status-bar");
+  const fill = document.getElementById("mode-status-fill");
+  bar.classList.add("on");
+  if (lockBarTimer) clearInterval(lockBarTimer);
+  lockBarTimer = setInterval(() => {
+    const frac = Math.min(1, (performance.now() - lockStartMs) / TRANSITION_ESTIMATE_MS);
+    fill.style.width = `${(frac * 100).toFixed(1)}%`;
+  }, 100);
+}
+
+function hideLockBar() {
+  if (lockBarTimer) { clearInterval(lockBarTimer); lockBarTimer = null; }
+  document.getElementById("mode-status-bar").classList.remove("on");
+}
+
+// --- Reliable mode sending -------------------------------------------------
+// Bytes arriving during FastLED.show() are lost (interrupts are off), so a
+// single mode packet has a real chance of vanishing. Resend every 300ms
+// until a status packet confirms the board took it. The firmware ignores
+// duplicate same-mode messages, so retries cannot restart the crossfade.
+let desiredMode = null;
+let modeRetriesLeft = 0;
+let modeRetryTimer = null;
+
+function sendModeReliable(mode) {
+  desiredMode = mode;
+  modeRetriesLeft = 5;
+  attemptModeSend();
+}
+
+function attemptModeSend() {
+  if (desiredMode === null || !link.connected) return;
+  sendPacket(buildModePacket(desiredMode));
+  modeRetriesLeft--;
+  if (modeRetryTimer) clearTimeout(modeRetryTimer);
+  modeRetryTimer = setTimeout(() => {
+    modeRetryTimer = null;
+    if (desiredMode === null) return;
+    if (modeRetriesLeft > 0) {
+      attemptModeSend();
+    } else {
+      setModeStatusText("mode change not confirmed, check link");
+      desiredMode = null;
+    }
+  }, 300);
+}
+
+function handleBoardStatus(payload) {
+  boardMode = payload[16];
+  const flags = payload[17];
+  boardTransitioning = (flags & 1) !== 0;
+
+  // Heal dials from board truth, skipping knobs the user is touching or
+  // that still have queued unsent ticks.
+  for (let id = 0; id < N_ENCODERS; id++) {
+    if (dragActive[id] || pendingDelta[id] !== 0) continue;
+    if (predicted[id] !== payload[id]) {
+      predicted[id] = payload[id];
+      if (knobControls[id]) knobControls[id].display(payload[id]);
+    }
+  }
+
+  // Mode buttons show what the board is actually in, not what was clicked.
+  document.querySelectorAll("#mode-row .btn").forEach(b => {
+    b.classList.toggle("active", parseInt(b.dataset.mode, 10) === boardMode);
+  });
+
+  // Close the retry loop once the board confirms.
+  if (desiredMode !== null && boardMode === desiredMode) {
+    desiredMode = null;
+    if (modeRetryTimer) { clearTimeout(modeRetryTimer); modeRetryTimer = null; }
+  }
+
+  if (boardTransitioning && !lockActive) {
+    lockActive = true;
+    showLockBar();
+  } else if (!boardTransitioning && lockActive) {
+    lockActive = false;
+    hideLockBar();
+  }
+
+  if (boardMode === 0xFF) {
+    setModeStatusText("board waiting: send a mode");
+  } else if (boardTransitioning) {
+    setModeStatusText(`crossfading to ${modeName(boardMode)}, knobs locked`);
+  } else if (boardMode === 0) {
+    setModeStatusText("mode: IDLE — knobs sleep until ACTIVE");
+  } else {
+    setModeStatusText(`mode: ${modeName(boardMode)} — live`);
+  }
+  refreshLockUi();
+}
+
+// Snap every dial and queued send back to defaults. Used on connect (the
+// board just reset via DTR) and on mode change (the board resets itself on
+// the mode message). Status packets correct any residual difference.
+function resetKnobMirror() {
+  pendingDelta.fill(0);
+  if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+  for (const knob of KNOBS) {
+    const def = defaultKnobValue(knob.id);
+    predicted[knob.id] = def;
+    if (knobControls[knob.id]) {
+      knobControls[knob.id].stopSpin();
+      knobControls[knob.id].display(def);
+    }
+  }
+}
+
+// Draggable dial: real rotary encoders spin forever with no absolute
+// position, so grab-and-drag (rather than a slider with a fixed physical
+// range) is the closer match. Drag distance since mousedown maps to value,
+// not cursor position, so the drag isn't bounded by the widget's size:
+// dragging down keeps turning the "knob" for as long as the mouse moves.
+const DIAL_R = 16;
+const DIAL_CIRC = 2 * Math.PI * DIAL_R;
+const DIAL_SENSITIVITY = 1.4; // px of drag per unit of value
+
+const knobControls = {}; // encoder id -> { setValue(v, opts), stopSpin() }
+
+function buildKnobRow(knob) {
+  const row = document.createElement("div");
+  row.className = "knob-row";
+
+  const label = document.createElement("label");
+  label.textContent = knob.label;
+  label.title = knob.label;
+
+  const dial = document.createElement("div");
+  dial.className = "dial";
+  dial.innerHTML = `
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <circle class="dial-track" cx="20" cy="20" r="${DIAL_R}"></circle>
+      <circle class="dial-fill" cx="20" cy="20" r="${DIAL_R}" transform="rotate(-90 20 20)"></circle>
+      <text class="dial-value" x="20" y="24"></text>
+    </svg>`;
+  const fillCircle = dial.querySelector(".dial-fill");
+  const valueText = dial.querySelector(".dial-value");
+
+  // Display only. The value shown is the board prediction owned by the
+  // endless-encoder model above, never a locally clamped drag position.
+  function display(v) {
+    valueText.textContent = v;
+    const frac = v / 255;
+    fillCircle.setAttribute("stroke-dasharray", `${(frac * DIAL_CIRC).toFixed(2)} ${DIAL_CIRC.toFixed(2)}`);
+  }
+  display(defaultKnobValue(knob.id));
+
+  // Endless drag: ticks come from movement since the last event, with a
+  // fractional carry so slow drags still register. There are no bounds,
+  // exactly like the physical encoder. The board clamps.
+  let dragging = false;
+  let dragLastY = 0;
+  let dragCarry = 0;
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    const raw = (e.clientY - dragLastY) / DIAL_SENSITIVITY + dragCarry;
+    const ticks = Math.trunc(raw);
+    dragCarry = raw - ticks;
+    dragLastY = e.clientY;
+    if (ticks !== 0) nudgeEncoder(knob.id, ticks); // down = clockwise = up
+  }
+  function onPointerUp() {
+    if (!dragging) return;
+    dragging = false;
+    dragActive[knob.id] = false;
+    dial.classList.remove("dragging");
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
+  }
+  dial.addEventListener("pointerdown", (e) => {
+    if (dragging || encodersLocked()) return;
+    dragging = true;
+    dragActive[knob.id] = true;
+    dragLastY = e.clientY;
+    dragCarry = 0;
+    dial.classList.add("dragging");
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    e.preventDefault();
+  });
+
+  row.addEventListener("mouseenter", () => {
+    highlightedIndices = ledIndicesForEncoder(knob.id);
+    drawViewer();
+  });
+  row.addEventListener("mouseleave", () => {
+    highlightedIndices = null;
+    drawViewer();
+  });
+
+  const spin = document.createElement("button");
+  spin.className = "btn small";
+  spin.textContent = "spin";
+  spin.title = "Fire a rapid burst of +1 ticks, like someone cranking the knob";
+  let spinTimer = null;
+  function stopSpin() {
+    if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
+  }
+  spin.addEventListener("click", () => {
+    if (spinTimer) { stopSpin(); return; }
+    if (encodersLocked()) return;
+    let ticks = 0;
+    spinTimer = setInterval(() => {
+      // A mode change or disconnect mid-spin must kill the burst, or it
+      // keeps sending ticks the firmware is discarding.
+      if (encodersLocked()) { stopSpin(); return; }
+      nudgeEncoder(knob.id, 1); // runs past the clamp; the board just pegs
+      ticks++;
+      if (ticks >= 80) stopSpin();
+    }, 12);
+  });
+
+  knobControls[knob.id] = { display, stopSpin };
+
+  row.appendChild(label);
+  row.appendChild(dial);
+  row.appendChild(spin);
+  return row;
+}
+
+function buildEncoderUi() {
+  const racks = { faucet: "rack-faucet", auxl: "rack-auxl", auxr: "rack-auxr", jets: "rack-jets" };
+  for (const knob of KNOBS) {
+    const container = document.getElementById(racks[knob.rack]);
+    container.appendChild(buildKnobRow(knob));
+  }
+}
+
+function buildModeUi() {
+  const buttons = document.querySelectorAll("#mode-row .btn");
+  buttons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!link.connected && !teensyLink.connected) {
+        setModeStatusText("not connected");
+        return;
+      }
+      const mode = parseInt(btn.dataset.mode, 10);
+      if (teensyLink.connected) {
+        // The Teensy owns the Uno's RX line; route the click through it.
+        // The Teensy sends the real packets with its own repeat burst.
+        teensySendModeCommand(mode);
+        setModeStatusText(`sent ${modeName(mode)} via teensy...`);
+      } else {
+        // Bench mode, no Teensy wire: talk to the Uno directly, retried
+        // until a status packet confirms it landed.
+        sendModeReliable(mode);
+        setModeStatusText(`switching to ${modeName(mode)}...`);
+      }
+      // The Uno resets every encoder to its default on the mode message
+      // (resetEncoderPositions() in tub.ino). Mirror that optimistically;
+      // status packets correct the dials if it has not landed yet.
+      resetKnobMirror();
+    });
+  });
+}
+
+// ===========================================================================
+// Pixel viewer
+// Lays out all 318 pixels spatially: underlight as a rounded-rect outline,
+// pole as a vertical line, panel as four clusters positioned like the real
+// racks. Draws only what arrives in framebuffer dumps, nothing simulated.
+// ===========================================================================
+
+const canvas = document.getElementById("viewer");
+const ctx = canvas.getContext("2d");
+
+// Walks a list of line/arc segments (each with a precomputed .len) and
+// returns n evenly-spaced points along the combined path. Shared by the
+// rounded-rect underlight outline and the curved shower-arm pole.
+function pointsAlongSegments(segs, n) {
+  const total = segs.reduce((s, seg) => s + seg.len, 0);
+
+  function pointAtDistance(d) {
+    for (const seg of segs) {
+      if (d <= seg.len) {
+        const t = seg.len === 0 ? 0 : d / seg.len;
+        if (seg.type === "line") {
+          return { x: seg.x1 + (seg.x2 - seg.x1) * t, y: seg.y1 + (seg.y2 - seg.y1) * t };
+        } else {
+          const a = seg.a1 + (seg.a2 - seg.a1) * t;
+          return { x: seg.cx + seg.r * Math.cos(a), y: seg.cy + seg.r * Math.sin(a) };
+        }
+      }
+      d -= seg.len;
+    }
+    return pointAtDistance(0);
+  }
+
+  const points = [];
+  for (let i = 0; i < n; i++) points.push(pointAtDistance((i / n) * total));
+  return points;
+}
+
+function roundedRectPerimeterPoints(x, y, w, h, r, n) {
+  const segs = [
+    { type: "line", x1: x + r,     y1: y,         x2: x + w - r, y2: y,         len: w - 2 * r },
+    { type: "arc",  cx: x + w - r, cy: y + r,     r, a1: -Math.PI / 2, a2: 0,          len: r * Math.PI / 2 },
+    { type: "line", x1: x + w,     y1: y + r,     x2: x + w,     y2: y + h - r, len: h - 2 * r },
+    { type: "arc",  cx: x + w - r, cy: y + h - r, r, a1: 0,            a2: Math.PI / 2, len: r * Math.PI / 2 },
+    { type: "line", x1: x + w - r, y1: y + h,     x2: x + r,     y2: y + h,     len: w - 2 * r },
+    { type: "arc",  cx: x + r,     cy: y + h - r, r, a1: Math.PI / 2,  a2: Math.PI,     len: r * Math.PI / 2 },
+    { type: "line", x1: x,         y1: y + h - r, x2: x,         y2: y + r,     len: h - 2 * r },
+    { type: "arc",  cx: x + r,     cy: y + r,     r, a1: Math.PI,      a2: 1.5 * Math.PI, len: r * Math.PI / 2 },
+  ];
+  return pointsAlongSegments(segs, n);
+}
+
+// The pole is a shower arm, not a decorative pole: a straight riser that
+// curves over the tub at the top like a gooseneck, rather than a plain
+// vertical line. anchorX/bottomY is the base near the tub rim, topY is
+// where the riser ends and the curve begins, radius is the bend's radius.
+function showerArmPoints(anchorX, bottomY, topY, radius, n) {
+  const segs = [
+    { type: "line", x1: anchorX, y1: bottomY, x2: anchorX, y2: topY + radius, len: bottomY - (topY + radius) },
+    { type: "arc",  cx: anchorX - radius, cy: topY + radius, r: radius, a1: 0, a2: -Math.PI / 2, len: radius * Math.PI / 2 },
+  ];
+  return pointsAlongSegments(segs, n);
+}
+
+// Faucet rack: NOT a grid. 5 top LEDs (cold/hot gradient) in a wide row,
+// 4 front LEDs (filter) in a narrower row directly below. Order matches
+// render_core.h: top 5 first, then front 4. The top row is mirrored:
+// the physical strip enters from the hot side, so index 0 is the
+// rightmost (hot-anchor) LED. Confirmed on hardware.
+function faucetPoints(cx, yTop) {
+  const points = [];
+  const topSpacing = 16;
+  for (let i = 0; i < 5; i++) {
+    points.push({ x: cx + 2 * topSpacing - i * topSpacing, y: yTop });
+  }
+  const frontSpacing = 14;
+  const frontY = yTop + 22;
+  for (let i = 0; i < 4; i++) {
+    points.push({ x: cx - 1.5 * frontSpacing + i * frontSpacing, y: frontY });
+  }
+  return points;
+}
+
+// Aux rack: a 2x2 of knobs, each knob's 3 LEDs running horizontally,
+// serpentine wired. Each pattern entry is one knob in CHAIN order: its
+// column (0 left, 1 right), row (0 top, 1 bottom), and whether its LED
+// run is reversed (right to left) because it sits on the return row.
+// Right rack confirmed on hardware. Left rack inferred from its identity
+// hue floor glow; its fill directions are not yet verified.
+const AUX_RIGHT_PATTERN = [
+  { c: 0, r: 1, rev: false },  // enc 3 red: bottom left
+  { c: 1, r: 1, rev: false },  // enc 4 green: bottom right
+  { c: 1, r: 0, rev: true  },  // enc 5 purple: top right
+  { c: 0, r: 0, rev: true  },  // enc 6 yellow: top left
+];
+const AUX_LEFT_PATTERN = [
+  { c: 0, r: 0, rev: false },  // enc 7 blue: top left
+  { c: 1, r: 0, rev: false },  // enc 8 orange: top right
+  { c: 1, r: 1, rev: true  },  // enc 9 aqua: bottom right
+  { c: 0, r: 1, rev: true  },  // enc 10 pink: bottom left
+];
+
+function auxRackPoints(cx, cy, pattern, colSpacing, rowSpacing, dotSpacing) {
+  const points = [];
+  for (const knob of pattern) {
+    const kx = cx + (knob.c - 0.5) * colSpacing;
+    const ky = cy + (knob.r - 0.5) * rowSpacing;
+    for (let s = 0; s < 3; s++) {
+      let dx = (s - 1) * dotSpacing;
+      if (knob.rev) dx = -dx;
+      points.push({ x: kx + dx, y: ky });
+    }
+  }
+  return points;
+}
+
+// Same triplet treatment, but knobs stack top to bottom instead of left to
+// right (each triplet drawn horizontally). Used for jets, which sits on the
+// side of the tub rather than along the front edge.
+function knobColumnHorizontalTriplets(cx, cy, knobCount, knobSpacing, dotSpacing) {
+  const points = [];
+  const totalHeight = (knobCount - 1) * knobSpacing;
+  for (let k = 0; k < knobCount; k++) {
+    const y = cy - totalHeight / 2 + k * knobSpacing;
+    for (let s = 0; s < 3; s++) {
+      points.push({ x: cx + (s - 1) * dotSpacing, y });
+    }
+  }
+  return points;
+}
+
+// Precompute pixel positions once. Layout constants tuned for the 900x560 canvas.
+const RECT = { x: 190, y: 150, w: 520, h: 280, r: 56 };
+const POLE = { x: RECT.x + RECT.w + 60, topY: 60, radius: 50 };
+
+const pixelPositions = new Array(N_TOTAL);
+const pixelMarker = new Array(N_TOTAL).fill("normal"); // "normal" | "center"
+const panelLabels = []; // { text, x, y, muted:bool }
+let poleHeadPos = null; // tip of the shower arm curve, for the nozzle marker
+
+(function layoutPixels() {
+  const under = roundedRectPerimeterPoints(RECT.x, RECT.y, RECT.w, RECT.h, RECT.r, N_UNDER);
+  for (let i = 0; i < N_UNDER; i++) pixelPositions[OFF_UNDER + i] = under[i];
+
+  // Shower arm: rises from the tub rim, curves over the top like a real
+  // gooseneck showerhead instead of running as a plain straight line.
+  const pole = showerArmPoints(POLE.x, RECT.y + RECT.h, POLE.topY, POLE.radius, N_POLE);
+  for (let i = 0; i < N_POLE; i++) pixelPositions[OFF_POLE + i] = pole[i];
+  poleHeadPos = pole[N_POLE - 1];
+  panelLabels.push({ text: "SHOWER", x: poleHeadPos.x - 6, y: poleHeadPos.y - 16 });
+
+  // Front group: faucet + aux left + aux right, grouped near the front edge
+  // of the tub outline (the bottom of the rounded rect), faucet centered
+  // and flanked by the two aux racks. 3 + 4 + 4 = 11 knobs, matches SPEC 3.
+  const centerX = RECT.x + RECT.w / 2;
+  const groupY = RECT.y + RECT.h + 50;
+
+  const auxCx = 96;   // offset from centerX
+  const faucet = faucetPoints(centerX, groupY);
+  // Chain order: the first aux block in the framebuffer is the RIGHT rack.
+  const auxFirst  = auxRackPoints(centerX + auxCx, groupY, AUX_RIGHT_PATTERN, 46, 26, 11);
+  const auxSecond = auxRackPoints(centerX - auxCx, groupY, AUX_LEFT_PATTERN, 46, 26, 11);
+
+  // Jets: separate cluster near the left/side edge of the tub, running
+  // down the side rather than joining the front group. 5th knob (the
+  // center/timer knob) is last in index order and marked distinct.
+  const jetsX = RECT.x - 110;
+  const jetsY = RECT.y + RECT.h / 2;
+  const jets = knobColumnHorizontalTriplets(jetsX, jetsY, 5, 30, 10);
+
+  let p = OFF_PANEL;
+  for (const pt of faucet)    pixelPositions[p++] = pt;
+  for (const pt of auxFirst)  pixelPositions[p++] = pt;   // 9-20: right rack
+  for (const pt of auxSecond) pixelPositions[p++] = pt;   // 21-32: left rack
+  const jetsStart = p;
+  for (const pt of jets)   pixelPositions[p++] = pt;
+
+  // Chain group 2 (LEDs 6-8 of the rack) is the center/timer knob: the
+  // chain runs JBL, JBR, JC, JUL, JUR.
+  for (let i = jetsStart + 6; i < jetsStart + 9; i++) pixelMarker[i] = "center";
+
+  panelLabels.push({ text: "FAUCET", x: centerX, y: groupY - 16 });
+  panelLabels.push({ text: "COLD OX", x: centerX - auxCx, y: groupY - 28 });
+  panelLabels.push({ text: "HOT OX",  x: centerX + auxCx, y: groupY - 28 });
+  panelLabels.push({ text: "JACUZZI", x: jetsX, y: jetsY - 2 * 30 - 14 });
+  panelLabels.push({ text: "JC=timer", x: jetsX + 26, y: jetsY + 4, small: true });
+})();
+
+// Maps an encoder id to the panel-local LED range it drives, mirroring the
+// dispatch in render_core.h's pixelActivePanel(). Used for hover highlight.
+function encoderPanelRange(id) {
+  if (id === 0 || id === 1) return { start: 0, count: 5 };   // faucet cold/hot: top 5
+  if (id === 2) return { start: 5, count: 4 };                // faucet filter: front 4
+  if (id >= 3 && id <= 6) return { start: 9 + (id - 3) * 3, count: 3 };   // aux RIGHT rack
+  if (id >= 7 && id <= 10) return { start: 21 + (id - 7) * 3, count: 3 }; // aux LEFT rack
+  if (id >= 11 && id <= 15) {
+    // LED chain walks the jacuzzi rack JBL, JBR, JC, JUL, JUR (confirmed
+    // on hardware), so encoder id -> chain group is a table, not id order.
+    const JETS_CHAIN_GROUP = { 13: 0, 14: 1, 15: 2, 11: 3, 12: 4 };
+    return { start: 33 + JETS_CHAIN_GROUP[id] * 3, count: 3 };
+  }
+  return null;
+}
+
+function ledIndicesForEncoder(id) {
+  const range = encoderPanelRange(id);
+  if (!range) return [];
+  const out = [];
+  for (let i = 0; i < range.count; i++) out.push(OFF_PANEL + range.start + i);
+  return out;
+}
+
+let highlightedIndices = null;
+
+let lastFramebuffer = null;
+
+function renderFramebuffer(payload) {
+  lastFramebuffer = payload;
+  drawViewer();
+}
+
+// Perceptual boost applied only for on-screen glow, never to the real byte
+// values used elsewhere (log, highlight logic, sent packets). A dim LED on
+// diffused plastic still reads clearly to the eye; a dim value rendered as
+// a literal RGB dot on a screen does not, so lift it for legibility.
+function boostChannel(v) {
+  if (v <= 0) return 0;
+  return Math.min(255, Math.round(Math.pow(v / 255, 0.55) * 255));
+}
+
+// Shared dot renderer: a soft additive glow plus a bright core, or a faint
+// ghost dot when unlit. Used by both the overview and the per-rack detail
+// views so zooming in doesn't change how a pixel actually reads.
+function drawPixelDot(pos, r, g, b, glowRadius, coreRadius) {
+  const lit = r + g + b > 4;
+
+  if (!lit) {
+    ctx.beginPath();
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.arc(pos.x, pos.y, coreRadius * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  const br = boostChannel(r), bg = boostChannel(g), bb = boostChannel(b);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  // Wide soft halo, then a tighter bright glow, then the core. Three
+  // layers instead of one reads as a richer light source at low values,
+  // where a single 0.55-alpha layer used to look like a dim smudge.
+  const halo = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius * 1.8);
+  halo.addColorStop(0, `rgba(${br},${bg},${bb},0.35)`);
+  halo.addColorStop(1, `rgba(${br},${bg},${bb},0)`);
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, glowRadius * 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
+  glow.addColorStop(0, `rgba(${br},${bg},${bb},0.85)`);
+  glow.addColorStop(1, `rgba(${br},${bg},${bb},0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgb(${br},${bg},${bb})`;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, coreRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawHighlightRing(pos, radius) {
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(77,208,225,0.9)";
+  ctx.lineWidth = 1.5;
+  ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#050607";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// Faint rounded plate behind a group of dots, so a rack reads as a physical
+// fixture instead of loose dots floating in the dark.
+function drawPlateAroundPoints(points, pad) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  ctx.beginPath();
+  ctx.roundRect(minX - pad, minY - pad, (maxX - minX) + 2 * pad, (maxY - minY) + 2 * pad, 6);
+  ctx.fillStyle = "rgba(255,255,255,0.03)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+// Panel-local dot ranges per rack, for plates and labels.
+const RACK_RANGES = [
+  { start: 0,  count: N_FAUCET },
+  { start: 9,  count: N_AUXL },
+  { start: 21, count: N_AUXR },
+  { start: 33, count: N_JETS },
+];
+
+// The physical scene behind the LEDs: tub shell, water hint, shower pipe.
+// All of it very faint, so the lights stay the subject.
+function drawFixtures() {
+  // Tub shell.
+  ctx.beginPath();
+  ctx.roundRect(RECT.x, RECT.y, RECT.w, RECT.h, RECT.r);
+  ctx.fillStyle = "rgba(110,160,200,0.05)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.09)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Water surface inside the rim.
+  ctx.beginPath();
+  ctx.roundRect(RECT.x + 16, RECT.y + 16, RECT.w - 32, RECT.h - 32, Math.max(10, RECT.r - 14));
+  ctx.fillStyle = "rgba(90,180,220,0.05)";
+  ctx.fill();
+
+  // Shower pipe under the pole LEDs: riser plus the gooseneck bend.
+  ctx.beginPath();
+  ctx.moveTo(POLE.x, RECT.y + RECT.h);
+  ctx.lineTo(POLE.x, POLE.topY + POLE.radius);
+  ctx.arc(POLE.x - POLE.radius, POLE.topY + POLE.radius, POLE.radius, 0, -Math.PI / 2, true);
+  ctx.strokeStyle = "rgba(255,255,255,0.07)";
+  ctx.lineWidth = 7;
+  ctx.stroke();
+
+  // Shower head disc at the arm tip.
+  if (poleHeadPos) {
+    ctx.beginPath();
+    ctx.arc(poleHeadPos.x, poleHeadPos.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(77,208,225,0.3)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Rack plates.
+  for (const range of RACK_RANGES) {
+    const pts = [];
+    for (let i = 0; i < range.count; i++) pts.push(pixelPositions[OFF_PANEL + range.start + i]);
+    drawPlateAroundPoints(pts, 10);
+  }
+}
+
+function drawOverview() {
+  clearCanvas();
+  drawFixtures();
+  const payload = lastFramebuffer;
+
+  // Distinct-marker outline for the jets center/timer knob, drawn behind
+  // its dots so it reads as a boundary around the triplet, not a fourth dot.
+  const centerIdx = [];
+  for (let i = OFF_PANEL; i < N_TOTAL; i++) if (pixelMarker[i] === "center") centerIdx.push(i);
+  if (centerIdx.length) {
+    const xs = centerIdx.map(i => pixelPositions[i].x);
+    const ys = centerIdx.map(i => pixelPositions[i].y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    ctx.strokeStyle = "rgba(232,163,61,0.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(minX - 6, minY - 6, (maxX - minX) + 12, (maxY - minY) + 12);
+  }
+
+  for (let i = 0; i < N_TOTAL; i++) {
+    const pos = pixelPositions[i];
+    const r = payload ? payload[i * 3]     : 0;
+    const g = payload ? payload[i * 3 + 1] : 0;
+    const b = payload ? payload[i * 3 + 2] : 0;
+    drawPixelDot(pos, r, g, b, 9, 2.4);
+    if (highlightedIndices && highlightedIndices.includes(i)) drawHighlightRing(pos, 6);
+  }
+
+  ctx.font = "10px ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+  ctx.textAlign = "center";
+  for (const label of panelLabels) {
+    ctx.fillStyle = label.small ? "rgba(130,138,150,0.8)" : "rgba(155,163,175,0.95)";
+    ctx.fillText(label.text, label.x, label.y);
+  }
+}
+
+// ===========================================================================
+// Per-rack detail views. Same real LED indices and colors as the overview,
+// just laid out bigger and alone so an individual rack is easy to work on.
+// ===========================================================================
+
+const CANVAS_CX = 450, CANVAS_CY = 280;
+
+function detailLayoutFaucet() {
+  const cx = CANVAS_CX, cy = CANVAS_CY;
+  const topSpacing = 130;
+  const points = [];
+  // Mirrored like the overview: index 0 is the rightmost (hot-anchor) LED,
+  // matching the physical strip direction. Cold stays visually on the left.
+  for (let i = 0; i < 5; i++) points.push({ x: cx + 2 * topSpacing - i * topSpacing, y: cy - 70 });
+  const frontSpacing = 110;
+  for (let i = 0; i < 4; i++) points.push({ x: cx - 1.5 * frontSpacing + i * frontSpacing, y: cy + 100 });
+
+  const labels = [
+    { text: "FL COLD (0)", x: points[4].x, y: points[4].y - 26 },
+    { text: "FR HOT (1)",  x: points[0].x, y: points[0].y - 26 },
+    { text: "FC FILTER (2)", x: cx, y: cy + 150 },
+  ];
+  return { points, labels, marker: new Array(9).fill("normal") };
+}
+
+function detailLayoutKnobRow(knobLabels) {
+  const cx = CANVAS_CX, cy = CANVAS_CY;
+  const knobSpacing = 150, dotSpacing = 16;
+  const totalWidth = (knobLabels.length - 1) * knobSpacing;
+  const points = [];
+  const labels = [];
+  const marker = [];
+  for (let k = 0; k < knobLabels.length; k++) {
+    const x = cx - totalWidth / 2 + k * knobSpacing;
+    for (let s = 0; s < 3; s++) {
+      points.push({ x, y: cy + (s - 1) * dotSpacing });
+      marker.push("normal");
+    }
+    labels.push({ text: knobLabels[k], x, y: cy + dotSpacing + 26 });
+  }
+  return { points, labels, marker };
+}
+
+function detailLayoutJets(knobLabels) {
+  const layout = detailLayoutKnobRow(knobLabels);
+  // Chain group 2 is the center/timer knob: mark its 3 dots distinct.
+  for (let i = 6; i < 9; i++) layout.marker[i] = "center";
+  return layout;
+}
+
+// Zoomed 2x2 aux rack, physical arrangement, labels under each knob.
+function detailLayoutAuxRack(pattern, names) {
+  const cx = CANVAS_CX, cy = CANVAS_CY;
+  const colSpacing = 280, rowSpacing = 180, dotSpacing = 36;
+  const points = auxRackPoints(cx, cy, pattern, colSpacing, rowSpacing, dotSpacing);
+  const labels = [];
+  for (let k = 0; k < 4; k++) {
+    const p = pattern[k];
+    labels.push({
+      text: names[k],
+      x: cx + (p.c - 0.5) * colSpacing,
+      y: cy + (p.r - 0.5) * rowSpacing + 40,
+    });
+  }
+  return { points, labels, marker: new Array(12).fill("normal") };
+}
+
+const PANEL_RACKS = {
+  faucet: { start: 0,  count: N_FAUCET, title: "FAUCET",     build: () => detailLayoutFaucet() },
+  auxr:   { start: 9,  count: N_AUXR,   title: "HOT OX (RIGHT)",  build: () => detailLayoutAuxRack(AUX_RIGHT_PATTERN, ["RBL (3, red)", "RBR (4, green)", "RUR (5, purple)", "RUL (6, yellow)"]) },
+  auxl:   { start: 21, count: N_AUXL,   title: "COLD OX (LEFT)",  build: () => detailLayoutAuxRack(AUX_LEFT_PATTERN, ["LUL (7, blue)", "LUR (8, orange)", "LBR (9, aqua)", "LBL (10, pink)"]) },
+  jets:   { start: 33, count: N_JETS,   title: "JACUZZI",    build: () => detailLayoutJets(["JBL (13)", "JBR (14)", "JC TIMER (15)", "JUL (11)", "JUR (12)"]) },
+};
+
+function drawRackDetail(rackKey) {
+  clearCanvas();
+  const rack = PANEL_RACKS[rackKey];
+  const layout = rack.build();
+  const payload = lastFramebuffer;
+
+  drawPlateAroundPoints(layout.points, 40);
+
+  const centerDots = layout.points.filter((_, i) => layout.marker[i] === "center");
+  if (centerDots.length) {
+    const xs = centerDots.map(p => p.x), ys = centerDots.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    ctx.strokeStyle = "rgba(232,163,61,0.4)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(minX - 14, minY - 14, (maxX - minX) + 28, (maxY - minY) + 28);
+  }
+
+  for (let i = 0; i < layout.points.length; i++) {
+    const absIdx = OFF_PANEL + rack.start + i;
+    const pos = layout.points[i];
+    const r = payload ? payload[absIdx * 3]     : 0;
+    const g = payload ? payload[absIdx * 3 + 1] : 0;
+    const b = payload ? payload[absIdx * 3 + 2] : 0;
+    drawPixelDot(pos, r, g, b, 20, 6);
+    if (highlightedIndices && highlightedIndices.includes(absIdx)) drawHighlightRing(pos, 13);
+  }
+
+  ctx.textAlign = "center";
+  ctx.font = "12px ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+  for (const label of layout.labels) {
+    ctx.fillStyle = "rgba(201,209,217,0.8)";
+    ctx.fillText(label.text, label.x, label.y);
+  }
+
+  ctx.font = "11px ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+  ctx.fillStyle = "rgba(107,114,128,0.9)";
+  ctx.textAlign = "left";
+  ctx.fillText(rack.title, 20, 30);
+}
+
+let activeTab = "overview";
+
+function drawViewer() {
+  if (activeTab === "overview") drawOverview();
+  else drawRackDetail(activeTab);
+}
+
+// ===========================================================================
+// Boot
+// ===========================================================================
+
+function setActiveTab(tab) {
+  activeTab = tab;
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+
+  // Filtering the sidebar to the rack under inspection keeps "work on one
+  // rack at a time" from meaning "scroll past everything else to find it."
+  document.querySelectorAll("#sidebar fieldset").forEach(fs => {
+    const rack = fs.dataset.rack;
+    fs.style.display = (rack === "mode" || tab === "overview" || rack === tab) ? "" : "none";
+  });
+
+  drawViewer();
+}
+
+function buildTabUi() {
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+  });
+}
+
+function init() {
+  if (!("serial" in navigator)) {
+    document.getElementById("serial-warning").style.display = "block";
+    document.getElementById("btn-connect").disabled = true;
+  }
+
+  document.getElementById("btn-connect").addEventListener("click", () => {
+    if (link.connected) disconnect();
+    else connect();
+  });
+
+  document.getElementById("btn-teensy").addEventListener("click", () => {
+    if (teensyLink.connected) disconnectTeensy();
+    else connectTeensy();
+  });
+
+  buildEncoderUi();
+  buildModeUi();
+  buildTabUi();
+  refreshLockUi(); // page loads disconnected, knobs locked
+  drawViewer();
+}
+
+init();
+</script>
+</body>
+</html>
