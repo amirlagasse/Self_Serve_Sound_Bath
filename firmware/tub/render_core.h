@@ -355,7 +355,19 @@ inline CRGB pixelActivePanel(uint8_t i, const uint8_t *encPos,
   uint8_t sub     = local % 3;
   if ((knobIdx & 3) >= 2) sub = 2 - sub;          // second row: reversed run
   uint8_t enc     = ENC_AUXR_FIRST + knobIdx;     // 3..10
-  return pixelStandardKnob(enc, sub, encPos[enc], turnHeat[enc]);
+  CRGB c = pixelStandardKnob(enc, sub, encPos[enc], turnHeat[enc]);
+
+  // Faucet master ceiling (Amir 2026-08-11): the hot faucet knob gates
+  // the whole hot rack's brightness, the cold knob gates the cold rack.
+  // Faucet at 0 = rack dark. Ramps linearly to half travel (128), fully
+  // open from there up: past half the faucet stops affecting the rack.
+  // Each knob's own fill meter still moves underneath the ceiling.
+  uint8_t master = (enc <= ENC_MODX_HOT) ? encPos[ENC_FAUCET_HOT]
+                                         : encPos[ENC_FAUCET_COLD];
+  if (master < 128) {
+    c.nscale8_video((uint8_t)(master << 1));
+  }
+  return c;
 }
 
 // ===========================================================================

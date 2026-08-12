@@ -1234,7 +1234,16 @@ function pvActivePanel(i, t) {
   let sub = local % 3;
   if ((knobIdx & 3) >= 2) sub = 2 - sub;                // serpentine second row
   const enc = 3 + knobIdx;
-  return pvStandardKnob(enc, sub, predicted[enc], previewHeat[enc]);
+  let c = pvStandardKnob(enc, sub, predicted[enc], previewHeat[enc]);
+
+  // Faucet master ceiling: hot faucet gates the hot rack, cold gates the
+  // cold rack. Dark at 0, fully open from half travel up.
+  const master = enc <= 6 ? predicted[1] : predicted[0];
+  if (master < 128) {
+    const m = master << 1;
+    c = c.map(ch => (ch && m) ? Math.min(255, ((ch * m) >> 8) + 1) : 0);
+  }
+  return c;
 }
 
 function pvPixel(mode, strip, idx, t) {
