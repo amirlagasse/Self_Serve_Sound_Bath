@@ -1255,28 +1255,39 @@ function pvActivePanel(i, t) {
   return c;
 }
 
-// Jets bubbles on the bowl: brightness pops driven by JC, mirrors
-// bubbleBoost in render_core.h.
-function pvBubbleBoost(i, t, level) {
-  if (level === 0) return 0;
-  const patch   = fl.sin8(((i * 5) & 255) + ((t >> 5) & 255));
-  const shimmer = fl.sin8((((i * 11) & 255) - ((t >> 3) & 255) + 256) & 255);
-  const field   = fl.scale8(patch, shimmer);
-  const crest   = fl.qsub8(field, 128);
-  const pop     = fl.qadd8(fl.qadd8(fl.qadd8(crest, crest), crest), crest);
+// Jets specs on the pole: contrast-colored flecks rising through the
+// water, driven by JC. Mirrors pixelPoleWithSpecs in render_core.h.
+function pvPoleWithSpecs(i, t, coldPos, hotPos, level) {
+  const c = pvPoleWater(i, t, coldPos, hotPos);
+  if (level === 0) return c;
+
+  const h = i;   // POLE_UP_IS_INCREASING 1
+  const fleck = fl.sin8((((t >> 1) & 255) - ((h * 23) & 255) + 256) & 255);
+  const gate  = fl.sin8(((h * 3) & 255) + ((t >> 4) & 255));
+  const field = fl.scale8(fleck, gate);
+  const crest = fl.qsub8(field, 150);
+  let alpha = fl.qadd8(fl.qadd8(crest, crest), crest);
+
   const inv = 255 - level;
   const eff = fl.qadd8(255 - fl.scale8(inv, inv), 64);
-  return fl.scale8(pop, eff);
+  alpha = fl.scale8(alpha, eff);
+  if (alpha === 0) return c;
+
+  const mix = 128 + (hotPos >> 1) - (coldPos >> 1);
+  const hot = [255, 24, 0], cold = [0, 72, 255];
+  let spec = [fl.lerp8(hot[0], cold[0], mix), fl.lerp8(hot[1], cold[1], mix), fl.lerp8(hot[2], cold[2], mix)];
+  const centered = Math.abs(mix - 128);
+  const whiteness = 255 - fl.qadd8(centered, centered);
+  spec = spec.map(ch => fl.lerp8(ch, 255, whiteness));
+
+  return [fl.lerp8(c[0], spec[0], alpha), fl.lerp8(c[1], spec[1], alpha), fl.lerp8(c[2], spec[2], alpha)];
 }
 
 function pvPixel(mode, strip, idx, t) {
   if (mode === 0) return pvIdle(strip, idx, t);
   if (strip === 2) return pvActivePanel(idx, t);
-  if (strip === 1) return pvPoleWater(idx, t, predicted[0], predicted[1]);
-  const c = pvAmbient(strip, idx, t);
-  const boost = pvBubbleBoost(idx, t, predicted[15]);
-  if (!boost) return c;
-  return [fl.qadd8(c[0], boost), fl.qadd8(c[1], boost), fl.qadd8(c[2], boost)];
+  if (strip === 1) return pvPoleWithSpecs(idx, t, predicted[0], predicted[1], predicted[15]);
+  return pvAmbient(strip, idx, t);
 }
 
 // --- Preview frame loop ----------------------------------------------------

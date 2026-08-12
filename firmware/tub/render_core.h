@@ -208,38 +208,50 @@ inline CRGB pixelPoleWater(uint8_t i, uint16_t t, uint8_t coldPos, uint8_t hotPo
 }
 
 // ===========================================================================
-// ACTIVE MODE: BOWL BUBBLES
-// Jets bubbles on the underlight, driven ONLY by the jets center knob
-// (JC, the volume jet). A brightness modifier, not a color change: the
-// ambient rainbow keeps flowing underneath and bright patches pop on
-// top of it. JC at 0 (its default) is no bubbles at all; the patches
-// get denser and harder as the jet level rises. Subtle at low levels.
+// ACTIVE MODE: POLE SPECS (jets bubbles, redefined 2026-08-11)
+// Small bright flecks rising up the stem through the water animation,
+// driven ONLY by the jets center knob (JC). Spec color CONTRASTS the
+// water: blue flecks on hot/red water, red flecks on cold/blue water,
+// white flecks when the mix sits near center. JC at 0 = no flecks;
+// density and punch grow with the jet level.
 // ===========================================================================
 
-inline uint8_t bubbleBoost(uint8_t i, uint16_t t, uint8_t level) {
-  if (level == 0) return 0;
+inline CRGB pixelPoleWithSpecs(uint8_t i, uint16_t t,
+                               uint8_t coldPos, uint8_t hotPos, uint8_t level) {
+  CRGB c = pixelPoleWater(i, t, coldPos, hotPos);
+  if (level == 0) return c;
 
-  // Two waves drifting at different speeds and spatial frequencies
-  // multiply into soft blobs that wander around the bowl.
-  uint8_t patch   = sin8((uint8_t)(i * 5)  + (uint8_t)(t >> 5));
-  uint8_t shimmer = sin8((uint8_t)(i * 11) - (uint8_t)(t >> 3));
-  uint8_t field   = scale8(patch, shimmer);
+#if POLE_UP_IS_INCREASING
+  uint8_t h = i;
+#else
+  uint8_t h = (uint8_t)(N_POLE - 1 - i);
+#endif
 
-  // Only the crests pop: cut the floor away, then steepen what is left
-  // so bubbles read as distinct bits, not a global brightening. Cut at
-  // 128 with a x4 steepen: through the diffuser anything gentler
-  // vanished into the ambient rainbow (bench-tested, twice).
-  uint8_t crest = qsub8(field, 128);
-  uint8_t pop   = qadd8(qadd8(qadd8(crest, crest), crest), crest);
+  // A narrow fast wave rising slower than the water pulses (bubbles
+  // drifting up through the flow), gated by a slow drifting wave so
+  // flecks stay sparse and irregular instead of evenly spaced.
+  uint8_t fleck = sin8((uint8_t)(t >> 1) - (uint8_t)(h * 23));
+  uint8_t gate  = sin8((uint8_t)(h * 3) + (uint8_t)(t >> 4));
+  uint8_t field = scale8(fleck, gate);
+  uint8_t crest = qsub8(field, 150);
+  uint8_t alpha = qadd8(qadd8(crest, crest), crest);
 
-  // Response curve: linear-in-level was invisible below half travel.
-  // Concave rise (fast early, saturating late) plus a strong activation
-  // floor so the FIRST click already reads, then grows to extreme.
+  // Concave response with an activation floor: the first JC click
+  // already shows flecks, full JC is a steady stream.
   uint8_t inv = 255 - level;
-  uint8_t eff = 255 - scale8(inv, inv);
-  eff = qadd8(eff, 64);
+  uint8_t eff = qadd8(255 - scale8(inv, inv), 64);
+  alpha = scale8(alpha, eff);
+  if (alpha == 0) return c;
 
-  return scale8(pop, eff);
+  // Contrast color: the inverse of the water mix, pulled to white when
+  // the mix sits near center so flecks always stand out.
+  uint8_t mix = (uint8_t)(128 + (hotPos >> 1) - (coldPos >> 1));
+  CRGB spec = blend(CRGB(255, 24, 0), CRGB(0, 72, 255), mix);  // hot water -> blue fleck
+  uint8_t centered = (mix >= 128) ? (uint8_t)(mix - 128) : (uint8_t)(128 - mix);
+  uint8_t whiteness = 255 - qadd8(centered, centered);
+  spec = blend(spec, CRGB(255, 255, 255), whiteness);
+
+  return blend(c, spec, alpha);
 }
 
 // ===========================================================================
@@ -442,18 +454,11 @@ inline CRGB pixelForMode(uint8_t mode, uint8_t strip, uint8_t i,
   if (strip == S_PANEL) {                         // ACTIVE panel
     return pixelActivePanel(i, encPos, turnHeat, t, jetsAwake);
   }
-  if (strip == S_POLE) {                          // ACTIVE pole: water climb
-    return pixelPoleWater(i, t, encPos[ENC_FAUCET_COLD], encPos[ENC_FAUCET_HOT]);
+  if (strip == S_POLE) {                          // ACTIVE pole: water + jets specs
+    return pixelPoleWithSpecs(i, t, encPos[ENC_FAUCET_COLD],
+                              encPos[ENC_FAUCET_HOT], encPos[ENC_JETS_CENTER]);
   }
-  // ACTIVE underlight: flowing ambient plus jets bubbles on top.
-  CRGB c = pixelActiveAmbient(strip, i, t);
-  uint8_t boost = bubbleBoost(i, t, encPos[ENC_JETS_CENTER]);
-  if (boost) {
-    c.r = qadd8(c.r, boost);
-    c.g = qadd8(c.g, boost);
-    c.b = qadd8(c.b, boost);
-  }
-  return c;
+  return pixelActiveAmbient(strip, i, t);         // ACTIVE underlight
 }
 
 // Render the entire framebuffer for one frame.
