@@ -104,7 +104,11 @@ const uint8_t KNOB_BASE_HUE[N_ENCODERS] PROGMEM = {
   160, 0, 140,          // faucet: cold(blue) hot(red) filter(sky), own renderers
   0, 22, 43, 64,        // enc 3-6, hot aux: red, orange, amber, yellow
   160, 143, 128, 180,   // enc 7-10, cold aux: blue, cyan, aqua, indigo
-  96, 200, 224, 240,    // jets corners: green, purple, magenta, rose
+  85, 192, 43, 149,     // jets corners: ORIGINAL colors restored per the
+                        // 2026-08-11 bench review (green, purple, orange,
+                        // azure). Note 43 repeats the hot rack's amber and
+                        // 149 sits near the cold rack's cyan; accepted,
+                        // different racks.
   0                     // JC: white, sat forced to 0 in pixelStandardKnob
 };
 
@@ -295,8 +299,20 @@ const uint8_t FILTER_LED_POS[4] PROGMEM = { 0, 85, 170, 255 };
 // across the row. A dim floor keeps all 4 LEDs faintly present so the
 // row never looks broken.
 inline CRGB pixelFaucetFilter(uint8_t i, uint8_t pos) {
+  // Center-snap display (Amir 2026-08-11): the first detent click away
+  // from center throws the lit peak half the row's travel; clicks past
+  // that move it much less. Off-center is unmissable, and re-centering
+  // is easy because the peak only snaps home on the exact center click.
+  // One detent = 16 rotation units (knobCfg stepsPerRange 16).
+  uint8_t mag = (pos >= 128) ? (pos - 128) : (128 - pos);
+  uint8_t off;
+  if (mag == 0)      off = 0;
+  else if (mag < 16) off = mag * 4;                                  // first click: x4
+  else               off = 64 + (uint8_t)(((uint16_t)(mag - 16) * 9) >> 4);
+  uint8_t disp = (pos >= 128) ? (uint8_t)(128 + off) : (uint8_t)(128 - off);
+
   uint8_t ledPos = pgm_read_byte(&FILTER_LED_POS[i]);
-  uint8_t dist = (pos > ledPos) ? (pos - ledPos) : (ledPos - pos);
+  uint8_t dist = (disp > ledPos) ? (disp - ledPos) : (ledPos - disp);
 
   uint16_t drop = (uint16_t)dist * 2;
   uint8_t peak = (drop >= 255) ? 0 : (255 - (uint8_t)drop);
