@@ -1168,7 +1168,7 @@ function pvAmbient(strip, i, t) {
 }
 
 function pvPoleWater(i, t, coldPos, hotPos) {
-  const h = i;   // POLE_UP_IS_INCREASING 1: pixel 0 is the bottom
+  const h = N_POLE - 1 - i;   // POLE_UP_IS_INCREASING 0: run starts at the top
   const mix = 128 + (hotPos >> 1) - (coldPos >> 1);
   const cold = [0, 72, 255], hot = [255, 24, 0];
   const c = [
@@ -1255,11 +1255,26 @@ function pvActivePanel(i, t) {
   return c;
 }
 
+// Jets bubbles on the bowl: brightness pops driven by JC, mirrors
+// bubbleBoost in render_core.h.
+function pvBubbleBoost(i, t, level) {
+  if (level === 0) return 0;
+  const patch   = fl.sin8(((i * 5) & 255) + ((t >> 5) & 255));
+  const shimmer = fl.sin8((((i * 11) & 255) - ((t >> 3) & 255) + 256) & 255);
+  const field   = fl.scale8(patch, shimmer);
+  const crest   = fl.qsub8(field, 160);
+  const pop     = fl.qadd8(fl.qadd8(crest, crest), crest);
+  return fl.scale8(pop, level);
+}
+
 function pvPixel(mode, strip, idx, t) {
   if (mode === 0) return pvIdle(strip, idx, t);
   if (strip === 2) return pvActivePanel(idx, t);
   if (strip === 1) return pvPoleWater(idx, t, predicted[0], predicted[1]);
-  return pvAmbient(strip, idx, t);
+  const c = pvAmbient(strip, idx, t);
+  const boost = pvBubbleBoost(idx, t, predicted[15]);
+  if (!boost) return c;
+  return [fl.qadd8(c[0], boost), fl.qadd8(c[1], boost), fl.qadd8(c[2], boost)];
 }
 
 // --- Preview frame loop ----------------------------------------------------

@@ -171,10 +171,10 @@ inline CRGB pixelActiveAmbient(uint8_t strip, uint8_t i, uint16_t t) {
 // faint trickle, taps cranked is full blast.
 // ===========================================================================
 
-// Pole pixel 0 is assumed to be at the BOTTOM of the stem, so pulses
-// climb toward higher indices. If the lamp test shows the run starts at
-// the top, set this to 0 to flip the direction.
-#define POLE_UP_IS_INCREASING 1
+// Direction flag for the climb. Flipped to 0 on 2026-08-11: on the real
+// pole the run starts at the TOP, so index must be reversed for pulses
+// to wash upward. Set back to 1 if a rewire changes the feed end.
+#define POLE_UP_IS_INCREASING 0
 
 inline CRGB pixelPoleWater(uint8_t i, uint16_t t, uint8_t coldPos, uint8_t hotPos) {
 #if POLE_UP_IS_INCREASING
@@ -206,6 +206,32 @@ inline CRGB pixelPoleWater(uint8_t i, uint16_t t, uint8_t coldPos, uint8_t hotPo
 
   c.nscale8_video(val);
   return c;
+}
+
+// ===========================================================================
+// ACTIVE MODE: BOWL BUBBLES
+// Jets bubbles on the underlight, driven ONLY by the jets center knob
+// (JC, the volume jet). A brightness modifier, not a color change: the
+// ambient rainbow keeps flowing underneath and bright patches pop on
+// top of it. JC at 0 (its default) is no bubbles at all; the patches
+// get denser and harder as the jet level rises. Subtle at low levels.
+// ===========================================================================
+
+inline uint8_t bubbleBoost(uint8_t i, uint16_t t, uint8_t level) {
+  if (level == 0) return 0;
+
+  // Two waves drifting at different speeds and spatial frequencies
+  // multiply into soft blobs that wander around the bowl.
+  uint8_t patch   = sin8((uint8_t)(i * 5)  + (uint8_t)(t >> 5));
+  uint8_t shimmer = sin8((uint8_t)(i * 11) - (uint8_t)(t >> 3));
+  uint8_t field   = scale8(patch, shimmer);
+
+  // Only the crests pop: cut the floor away, then steepen what is left
+  // so bubbles read as distinct bits, not a global brightening.
+  uint8_t crest = qsub8(field, 160);
+  uint8_t pop   = qadd8(qadd8(crest, crest), crest);
+
+  return scale8(pop, level);
 }
 
 // ===========================================================================
@@ -411,7 +437,15 @@ inline CRGB pixelForMode(uint8_t mode, uint8_t strip, uint8_t i,
   if (strip == S_POLE) {                          // ACTIVE pole: water climb
     return pixelPoleWater(i, t, encPos[ENC_FAUCET_COLD], encPos[ENC_FAUCET_HOT]);
   }
-  return pixelActiveAmbient(strip, i, t);         // ACTIVE underlight
+  // ACTIVE underlight: flowing ambient plus jets bubbles on top.
+  CRGB c = pixelActiveAmbient(strip, i, t);
+  uint8_t boost = bubbleBoost(i, t, encPos[ENC_JETS_CENTER]);
+  if (boost) {
+    c.r = qadd8(c.r, boost);
+    c.g = qadd8(c.g, boost);
+    c.b = qadd8(c.b, boost);
+  }
+  return c;
 }
 
 // Render the entire framebuffer for one frame.
