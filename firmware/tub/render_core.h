@@ -93,17 +93,19 @@ enum Strip : uint8_t { S_UNDER = 0, S_POLE = 1, S_PANEL = 2 };
 // with position: each knob is recognizably "the teal one" or "the amber
 // one" at every setting. Value is read from the fill meter, not the hue.
 //
-// The 12 standard hues are evenly spaced around the wheel (~21 apart) and
-// ordered so adjacent knobs in the same rack sit ~107 apart: neighbors are
-// never near-neighbors on the wheel.
+// Family scheme per Amir 2026-08-11: the hot aux wears only warm hues,
+// the cold aux only cool hues, and the jets corners take the leftover
+// wheel space (green / purple / magenta / rose) so they read as neither
+// family. JC is WHITE: its hue entry is unused, pixelStandardKnob forces
+// its saturation to 0. All 12 identity colors are unique. Must match
+// KNOB_HUES in twin/index.html.
 
 const uint8_t KNOB_BASE_HUE[N_ENCODERS] PROGMEM = {
   160, 0, 140,          // faucet: cold(blue) hot(red) filter(sky), own renderers
-  0, 107, 213, 64,      // enc 3-6, RIGHT rack: red, green, purple, yellow
-  171, 21, 128, 235,    // enc 7-10, LEFT rack: blue, orange, aqua, pink
-  85, 192, 43, 149,     // jets outer: green, purple, orange, azure
-  245                   // jets center: was 80, moved off jets-1's 85 so the
-                        // rack's five knobs stay distinguishable
+  0, 22, 43, 64,        // enc 3-6, hot aux: red, orange, amber, yellow
+  160, 143, 128, 180,   // enc 7-10, cold aux: blue, cyan, aqua, indigo
+  96, 200, 224, 240,    // jets corners: green, purple, magenta, rose
+  0                     // JC: white, sat forced to 0 in pixelStandardKnob
 };
 
 inline uint8_t knobHue(uint8_t enc) {
@@ -247,8 +249,11 @@ inline CRGB pixelStandardKnob(uint8_t enc, uint8_t subIndex, uint8_t pos, uint8_
   // the countdown, then fades through the bottom half. The knob stays
   // bright the whole time it is being turned, lingers briefly after the
   // last tick, and only then settles back to its identity color.
+  // JC is the white knob: base saturation 0, and qsub8 keeps the turning
+  // glow from wrapping it back to a color.
   uint8_t glow = qadd8(heat, heat);
-  uint8_t sat = 255 - scale8(glow, 100);   // hot: sat 155, ~40% toward white
+  uint8_t baseSat = (enc == ENC_JETS_CENTER) ? 0 : 255;
+  uint8_t sat = qsub8(baseSat, scale8(glow, 100));   // hot: ~40% toward white
   val = qadd8(val, scale8(glow, 38));      // hot: ~15% brighter, saturating add
 
   return CHSV(hue, sat, val);

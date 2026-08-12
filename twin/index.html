@@ -396,27 +396,72 @@ const N_ENCODERS = 16;
 // NAMING SCHEME: faucet knobs are FL / FR / FC (left, right, center).
 // The aux racks: L* = cold aux (left), R* = hot aux
 // (right), then position UL / UR / BL / BR. The jets rack is the JACUZZI:
-// JUL / JUR / JBL / JBR around JC (center, the timer). Jacuzzi outer
-// positions are PROVISIONAL until the rack order is confirmed on
-// hardware. Sound-side names from Nile kept in parens; ??? still unnamed.
+// JUL / JUR / JBL / JBR around JC (center, percussion volume).
+// Sound-side names from Nile (confirmed 2026-08-11) kept in parens.
 const KNOBS = [
-  { id: 0,  label: "FL (Cold)",         rack: "faucet" },
-  { id: 1,  label: "FR (Hot)",          rack: "faucet" },
-  { id: 2,  label: "FC (Filter)",       rack: "faucet" },
-  { id: 3,  label: "RBL (Transform X)", rack: "auxr" },   // red, bottom-left
-  { id: 4,  label: "RBR (???)",         rack: "auxr" },   // green, bottom-right
-  { id: 5,  label: "RUR (Pitch)",       rack: "auxr" },   // purple, top-right
-  { id: 6,  label: "RUL (???)",         rack: "auxr" },   // yellow, top-left
-  { id: 7,  label: "LUL (Pitch)",       rack: "auxl" },   // blue, top-left
-  { id: 8,  label: "LUR (???)",         rack: "auxl" },   // orange, top-right
-  { id: 9,  label: "LBR (Transform X)", rack: "auxl" },   // aqua, bottom-right
-  { id: 10, label: "LBL (???)",         rack: "auxl" },   // pink, bottom-left
-  { id: 11, label: "JUL",               rack: "jets" },   // PROVISIONAL position
-  { id: 12, label: "JUR",               rack: "jets" },   // PROVISIONAL position
-  { id: 13, label: "JBL",               rack: "jets" },   // PROVISIONAL position
-  { id: 14, label: "JBR",               rack: "jets" },   // PROVISIONAL position
-  { id: 15, label: "JC (Timer)",        rack: "jets" },
+  { id: 0,  label: "FL (Cold)",       rack: "faucet" },
+  { id: 1,  label: "FR (Hot)",        rack: "faucet" },
+  { id: 2,  label: "FC (Filter)",     rack: "faucet" },
+  { id: 3,  label: "RBL (Reverb)",    rack: "auxr" },   // red, bottom-left
+  { id: 4,  label: "RBR (Bitcrush)",  rack: "auxr" },   // orange, bottom-right
+  { id: 5,  label: "RUR (Pitch)",     rack: "auxr" },   // amber, top-right
+  { id: 6,  label: "RUL (Mod X)",     rack: "auxr" },   // yellow, top-left
+  { id: 7,  label: "LUL (Pitch)",     rack: "auxl" },   // blue, top-left
+  { id: 8,  label: "LUR (Mod X)",     rack: "auxl" },   // cyan, top-right
+  { id: 9,  label: "LBR (Reverb)",    rack: "auxl" },   // aqua, bottom-right
+  { id: 10, label: "LBL (Bitcrush)",  rack: "auxl" },   // indigo, bottom-left
+  { id: 11, label: "JUL (Pitch)",     rack: "jets" },   // green
+  { id: 12, label: "JUR (Rate)",      rack: "jets" },   // purple
+  { id: 13, label: "JBL (Transient)", rack: "jets" },   // magenta
+  { id: 14, label: "JBR (Flanger)",   rack: "jets" },   // rose
+  { id: 15, label: "JC (Volume)",     rack: "jets" },   // white
 ];
+
+// Knob identity hues, MUST match KNOB_BASE_HUE in firmware/tub/render_core.h.
+// FastLED rainbow hue 0-255. Hot aux is all warm, cold aux all cool, jets
+// corners are neither family (green / purple / magenta / rose), JC is
+// white (hue entry unused, rendered desaturated). Faucet entries are
+// unused: those knobs have their own renderers on the board.
+const KNOB_HUES = [
+  160, 0, 140,
+  0, 22, 43, 64,        // hot aux: red, orange, amber, yellow
+  160, 143, 128, 180,   // cold aux: blue, cyan, aqua, indigo
+  96, 200, 224, 240,    // jets corners: green, purple, magenta, rose
+  0,                    // JC: white, special-cased below
+];
+
+// FastLED's hsv2rgb_rainbow ported so the preview colors on the dials
+// match what the board will actually show. sat/val fixed at full.
+function fastledRainbow(hue) {
+  const scale8 = (i, s) => (i * s) >> 8;
+  const offset8 = (hue & 0x1f) << 3;
+  const third = scale8(offset8, 85);
+  const twothirds = scale8(offset8, 170);
+  let r, g, b;
+  if (!(hue & 0x80)) {
+    if (!(hue & 0x40)) {
+      if (!(hue & 0x20)) { r = 255 - third; g = third;           b = 0; }
+      else               { r = 171;         g = 85 + third;      b = 0; }
+    } else {
+      if (!(hue & 0x20)) { r = 171 - twothirds; g = 170 + third; b = 0; }
+      else               { r = 0;           g = 255 - third;     b = third; }
+    }
+  } else {
+    if (!(hue & 0x40)) {
+      if (!(hue & 0x20)) { r = 0;           g = 171 - twothirds; b = 85 + twothirds; }
+      else               { r = third;       g = 0;               b = 255 - third; }
+    } else {
+      if (!(hue & 0x20)) { r = 85 + third;  g = 0;               b = 171 - third; }
+      else               { r = 170 + third; g = 0;               b = 85 - third; }
+    }
+  }
+  return `rgb(${r},${g},${b})`;
+}
+
+function knobCssColor(id) {
+  if (id === 15) return "#ffffff";              // JC renders white
+  return fastledRainbow(KNOB_HUES[id]);
+}
 
 // ===========================================================================
 // Outbound packet builders. Every packet: [0xAA] [TYPE] [PAYLOAD...] [XOR]
@@ -1054,6 +1099,10 @@ function buildKnobRow(knob) {
   const fillCircle = dial.querySelector(".dial-fill");
   const valueText = dial.querySelector(".dial-value");
 
+  // Identity color preview: the dial ring wears the same hue the knob's
+  // panel LEDs will show, so palettes can be verified with no board.
+  fillCircle.style.stroke = knobCssColor(knob.id);
+
   // Display only. The value shown is the board prediction owned by the
   // endless-encoder model above, never a locally clamped drag position.
   function display(v) {
@@ -1642,9 +1691,9 @@ function detailLayoutAuxRack(pattern, names) {
 
 const PANEL_RACKS = {
   faucet: { start: 0,  count: N_FAUCET, title: "FAUCET",     build: () => detailLayoutFaucet() },
-  auxr:   { start: 9,  count: N_AUXR,   title: "HOT AUX (RIGHT)",  build: () => detailLayoutAuxRack(AUX_RIGHT_PATTERN, ["RBL (3, red)", "RBR (4, green)", "RUR (5, purple)", "RUL (6, yellow)"]) },
-  auxl:   { start: 21, count: N_AUXL,   title: "COLD AUX (LEFT)",  build: () => detailLayoutAuxRack(AUX_LEFT_PATTERN, ["LUL (7, blue)", "LUR (8, orange)", "LBR (9, aqua)", "LBL (10, pink)"]) },
-  jets:   { start: 33, count: N_JETS,   title: "JACUZZI",    build: () => detailLayoutJets(["JBL (13)", "JBR (14)", "JC TIMER (15)", "JUL (11)", "JUR (12)"]) },
+  auxr:   { start: 9,  count: N_AUXR,   title: "HOT AUX (RIGHT)",  build: () => detailLayoutAuxRack(AUX_RIGHT_PATTERN, ["RBL (3, red)", "RBR (4, orange)", "RUR (5, amber)", "RUL (6, yellow)"]) },
+  auxl:   { start: 21, count: N_AUXL,   title: "COLD AUX (LEFT)",  build: () => detailLayoutAuxRack(AUX_LEFT_PATTERN, ["LUL (7, blue)", "LUR (8, cyan)", "LBR (9, aqua)", "LBL (10, indigo)"]) },
+  jets:   { start: 33, count: N_JETS,   title: "JACUZZI",    build: () => detailLayoutJets(["JBL (13, magenta)", "JBR (14, rose)", "JC VOLUME (15, white)", "JUL (11, green)", "JUR (12, purple)"]) },
 };
 
 function drawRackDetail(rackKey) {
