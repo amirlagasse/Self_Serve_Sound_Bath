@@ -293,6 +293,22 @@ void sendMode(uint8_t mode) {
   txPacket(pkt, 4, true);
 }
 
+// Mode heartbeat. The Uno boots dark and waits to be told its mode, so
+// something must speak first; and a Uno that brownouts mid-session would
+// otherwise sit in the wrong state until the next occupancy change.
+// Re-sending the current mode every 2s fixes both: the Uno ignores
+// duplicates, so this can never restart a crossfade. Quiet: no log spam.
+const uint32_t MODE_HEARTBEAT_MS = 2000;
+unsigned long lastModeHeartbeatMs = 0;
+
+void serviceModeHeartbeat() {
+  if (millis() - lastModeHeartbeatMs < MODE_HEARTBEAT_MS) return;
+  lastModeHeartbeatMs = millis();
+  uint8_t pkt[4];
+  buildModePacket(pkt, currentMode);
+  txPacket(pkt, 4, false);
+}
+
 void sendEncoderDelta(uint8_t id, int8_t delta) {
   if (delta == 0) return;
   uint8_t pkt[5];
@@ -756,6 +772,7 @@ void setup() {
 void loop() {
   handleUsbCommands();
   serviceModeRepeats();
+  serviceModeHeartbeat();
 
 #if SIM_INPUTS
   serviceSimOccupancy();

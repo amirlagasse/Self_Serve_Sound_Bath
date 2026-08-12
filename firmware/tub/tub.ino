@@ -35,10 +35,8 @@
 CRGB leds[N_TOTAL];
 
 // --- Top-level state machine --------------------------------------------
-enum TopState : uint8_t { ST_LAMP_TEST, ST_WAITING, ST_RUNNING };
-TopState state = ST_LAMP_TEST;
-
-unsigned long lampTestStartMs = 0;
+enum TopState : uint8_t { ST_WAITING, ST_RUNNING };
+TopState state = ST_WAITING;
 
 // --- Mode / transition state --------------------------------------------
 uint8_t modeFrom = MODE_IDLE;
@@ -131,8 +129,13 @@ void setup() {
 
   resetEncoderPositions();
 
-  lampTestStartMs = millis();
-  state = ST_LAMP_TEST;
+  // Boot dark (lamp test removed 2026-08-11 per Amir: it masked startup
+  // state issues). The tub shows nothing until the Teensy's first mode
+  // message; the Teensy heartbeats its current mode every 2s, so the
+  // wait is short and the Teensy is the only source of mode truth.
+  fill_solid(leds, N_TOTAL, CRGB::Black);
+  FastLED.show();
+  state = ST_WAITING;
 }
 
 // ===========================================================================
@@ -147,32 +150,24 @@ void flagChecksumFailure() {
 
 // Mode to enter the moment the lamp test finishes: IDLE unless a mode
 // message arrives during the test.
-uint8_t bootMode = MODE_IDLE;
-
 void handleModeChange(uint8_t mode) {
-  if (state == ST_LAMP_TEST) {
-    // Never interrupt the boot lamp test. Remember the request and apply
-    // it when the test completes.
-    bootMode = mode;
-    return;
-  }
-
   // Ignore duplicates of the mode we are already in or already fading
   // toward. Serial bytes arriving during FastLED.show() are lost because
-  // interrupts are off, so a sender may repeat the mode message to get it
-  // through; without this guard each repeat would restart the crossfade
-  // and re-zero the encoders.
+  // interrupts are off, so a sender repeats the mode message (and now
+  // heartbeats it every 2s); without this guard each repeat would
+  // restart the crossfade and re-zero the encoders.
   if (state == ST_RUNNING && mode == modeTo) return;
 
   resetEncoderPositions();
   jetsAwake = false;
 
   if (state != ST_RUNNING) {
-    // Unreachable in the current flow (the lamp test hands straight into
-    // ST_RUNNING), kept as a safety net.
-    modeFrom = mode;
+    // First mode message after boot: leave the dark waiting state by
+    // crossfading in from black.
+    modeFrom = MODE_OFF;
     modeTo   = mode;
-    transitioning = false;
+    transitioning = true;
+    transitionStartMs = millis();
     state = ST_RUNNING;
   } else {
     modeFrom = modeTo;
@@ -376,8 +371,8 @@ void updateStatusLed() {
   } else if (state == ST_RUNNING && !transitioning && modeTo == MODE_ACTIVE) {
     digitalWrite(PIN_STATUS, LOW);
   } else {
-    // Lamp test, or mid-transition: not specified. Slow blink as a safe
-    // default so the board never looks dead.
+    // Mid-transition: not specified. Slow blink as a safe default so the
+    // board never looks dead.
     digitalWrite(PIN_STATUS, ((millis() / 500) % 2) ? HIGH : LOW);
   }
 }
@@ -392,29 +387,9 @@ void loop() {
   unsigned long now = millis();
 
   switch (state) {
-    case ST_LAMP_TEST:
-      if (now - lastFrameMs >= FRAME_INTERVAL_MS) {
-        lastFrameMs = now;
-        bool done = lampTestFrame(leds, (uint16_t)(now - lampTestStartMs));
-        FastLED.show();
-        if (done) {
-          fill_solid(leds, N_TOTAL, CRGB::Black);
-          FastLED.show();
-          // Straight into a mode, IDLE unless one arrived during the
-          // test. No dark waiting state: an empty tub should breathe.
-          resetEncoderPositions();
-          jetsAwake = false;
-          modeFrom = bootMode;
-          modeTo   = bootMode;
-          transitioning = false;
-          state = ST_RUNNING;
-        }
-      }
-      break;
-
     case ST_WAITING:
-      // No longer entered: the lamp test hands straight into ST_RUNNING.
-      // Kept so the state machine stays total.
+      // Dark. Strips were blacked in setup; nothing renders until the
+      // first mode message flips us to ST_RUNNING (handleModeChange).
       break;
 
     case ST_RUNNING:

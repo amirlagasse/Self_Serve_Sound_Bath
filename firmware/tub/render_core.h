@@ -378,9 +378,14 @@ inline CRGB pixelActivePanel(uint8_t i, const uint8_t *encPos,
 // progress: 0 = fully in `from` mode, 255 = fully in `to` mode.
 // ===========================================================================
 
+// Boot pseudo-mode: renders black. Never on the wire, only used as the
+// crossfade source for the first real mode after the dark boot wait.
+#define MODE_OFF 0xFE
+
 inline CRGB pixelForMode(uint8_t mode, uint8_t strip, uint8_t i,
                          uint16_t t, const uint8_t *encPos,
                          const uint8_t *turnHeat, bool jetsAwake) {
+  if (mode == MODE_OFF) return CRGB::Black;       // dark boot wait
   if (mode == 0) {                                // IDLE
     return pixelIdle(strip, i, t);
   }

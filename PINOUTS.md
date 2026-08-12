@@ -97,7 +97,7 @@ If the colors are wired exactly per the table, this should not happen. But if a 
 
 ## Quick health check after assembly
 
-1. Power the strips + Uno: a 20-pixel white block should chase along every strip (lamp test), then the tub settles into slow warm breathing.
+1. Power the strips + Uno: the strips stay DARK on purpose (the Uno waits for the Teensy to tell it the mode; solid pin-13 LED = waiting). Once the Teensy is up, the tub fades into slow warm breathing within a couple of seconds.
 2. Plug in the Teensy: nothing visible changes (still breathing) until someone triggers the sensor.
 3. Sit in front of the ToF sensor (under 70 cm) for a few seconds: the whole tub should switch to vibrant rainbow and the knob racks light up.
 4. Turn each knob and check its own 3 LEDs respond, in the right direction.

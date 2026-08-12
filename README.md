@@ -64,7 +64,7 @@ Setup order:
 
 1. Flash the Uno with the wire DETACHED from pin 0 (the bootloader needs that pin), then reattach.
 2. Flash the Teensy (USB Type: Serial + MIDI).
-3. Serve the twin, open it in Chrome, click Connect and pick the Uno's port. Lamp test plays, then IDLE breathing.
+3. Serve the twin, open it in Chrome, click Connect and pick the Uno's port. The strips stay dark until the Teensy tells the Uno its mode (2s heartbeat), then IDLE breathing fades in.
 4. Click Connect Teensy and pick the Teensy's port.
 5. Click Active. Mode clicks route through the Teensy, which transmits the real packets.
 6. Spin dials or turn real encoders. With the Teensy link up, dial ticks also route through the Teensy ('e' command) and go through its real knob model, so MIDI and lights stay locked. Knobs only respond in ACTIVE: the firmware discards deltas in IDLE and during crossfades.
