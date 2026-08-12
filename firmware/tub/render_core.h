@@ -228,10 +228,17 @@ inline uint8_t bubbleBoost(uint8_t i, uint16_t t, uint8_t level) {
 
   // Only the crests pop: cut the floor away, then steepen what is left
   // so bubbles read as distinct bits, not a global brightening.
-  uint8_t crest = qsub8(field, 160);
+  uint8_t crest = qsub8(field, 140);
   uint8_t pop   = qadd8(qadd8(crest, crest), crest);
 
-  return scale8(pop, level);
+  // Response curve: linear-in-level was invisible below half travel.
+  // Concave rise (fast early, saturating late) plus an activation floor
+  // so the FIRST click already reads, then it keeps growing to extreme.
+  uint8_t inv = 255 - level;
+  uint8_t eff = 255 - scale8(inv, inv);
+  eff = qadd8(eff, 40);
+
+  return scale8(pop, eff);
 }
 
 // ===========================================================================

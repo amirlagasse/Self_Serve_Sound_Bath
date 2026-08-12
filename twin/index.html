@@ -1262,9 +1262,11 @@ function pvBubbleBoost(i, t, level) {
   const patch   = fl.sin8(((i * 5) & 255) + ((t >> 5) & 255));
   const shimmer = fl.sin8((((i * 11) & 255) - ((t >> 3) & 255) + 256) & 255);
   const field   = fl.scale8(patch, shimmer);
-  const crest   = fl.qsub8(field, 160);
+  const crest   = fl.qsub8(field, 140);
   const pop     = fl.qadd8(fl.qadd8(crest, crest), crest);
-  return fl.scale8(pop, level);
+  const inv = 255 - level;
+  const eff = fl.qadd8(255 - fl.scale8(inv, inv), 40);
+  return fl.scale8(pop, eff);
 }
 
 function pvPixel(mode, strip, idx, t) {
