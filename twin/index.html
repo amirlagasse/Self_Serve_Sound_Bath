@@ -89,6 +89,7 @@
   .btn.small { padding: 2px 6px; font-size: 11px; }
   .btn.on-idle.active   { border-color: var(--amber); color: var(--amber); }
   .btn.on-active.active { border-color: var(--cyan); color: var(--cyan); }
+  #btn-preview.active   { border-color: var(--green); color: var(--green); }
 
   #status-dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -320,6 +321,7 @@
       <div id="mode-row">
         <button class="btn on-idle" data-mode="0">Idle</button>
         <button class="btn on-active" data-mode="1">Active</button>
+        <button class="btn" id="btn-preview" title="Render the animations locally in the browser, no boards needed. Board links must be dropped first.">Preview</button>
       </div>
       <div id="mode-status">
         <span id="mode-status-text">connect to begin</span>
@@ -430,13 +432,23 @@ const KNOB_HUES = [
   0,                    // JC: white, special-cased below
 ];
 
-// FastLED's hsv2rgb_rainbow ported so the preview colors on the dials
-// match what the board will actually show. sat/val fixed at full.
-function fastledRainbow(hue) {
-  const scale8 = (i, s) => (i * s) >> 8;
+// FastLED's 8-bit math ported so preview colors match what the board
+// will actually show. Faithful enough that a palette approved on screen
+// is the palette the LEDs render.
+const fl = {
+  scale8:      (i, s) => (i * s) >> 8,
+  scale8video: (i, s) => ((i * s) >> 8) + ((i && s) ? 1 : 0),
+  qadd8:       (a, b) => Math.min(255, a + b),
+  qsub8:       (a, b) => Math.max(0, a - b),
+  lerp8:       (a, b, f) => a + (((b - a) * f) >> 8),
+  sin8:        (x) => Math.round(128 + 127.5 * Math.sin(((x & 255) / 256) * Math.PI * 2)),
+};
+
+// hsv2rgb_rainbow hue wheel, full saturation slice.
+function rainbowRgb(hue) {
   const offset8 = (hue & 0x1f) << 3;
-  const third = scale8(offset8, 85);
-  const twothirds = scale8(offset8, 170);
+  const third = fl.scale8(offset8, 85);
+  const twothirds = fl.scale8(offset8, 170);
   let r, g, b;
   if (!(hue & 0x80)) {
     if (!(hue & 0x40)) {
@@ -455,12 +467,36 @@ function fastledRainbow(hue) {
       else               { r = 170 + third; g = 0;               b = 85 - third; }
     }
   }
-  return `rgb(${r},${g},${b})`;
+  return [r, g, b];
+}
+
+// Full CHSV -> RGB with FastLED's saturation and value handling.
+function chsvToRgb(h, s, v) {
+  let [r, g, b] = rainbowRgb(h);
+  if (s !== 255) {
+    if (s === 0) { r = 255; g = 255; b = 255; }
+    else {
+      let desat = 255 - s;
+      desat = fl.scale8video(desat, desat);
+      const satscale = 255 - desat;
+      r = fl.scale8(r, satscale) + desat;
+      g = fl.scale8(g, satscale) + desat;
+      b = fl.scale8(b, satscale) + desat;
+    }
+  }
+  if (v !== 255) {
+    if (v === 0) return [0, 0, 0];
+    r = fl.scale8video(r, v);
+    g = fl.scale8video(g, v);
+    b = fl.scale8video(b, v);
+  }
+  return [r, g, b];
 }
 
 function knobCssColor(id) {
   if (id === 15) return "#ffffff";              // JC renders white
-  return fastledRainbow(KNOB_HUES[id]);
+  const [r, g, b] = rainbowRgb(KNOB_HUES[id]);
+  return `rgb(${r},${g},${b})`;
 }
 
 // ===========================================================================
@@ -920,7 +956,17 @@ function flushEncoderBatch() {
 // Raw ticks in, no bounds. Queues the delta for the next batch window and
 // moves the local prediction with the same clamp the firmware applies.
 function nudgeEncoder(id, rawDelta) {
-  if (!link.connected || rawDelta === 0) return;
+  if (rawDelta === 0) return;
+  if (previewOn) {
+    // Local knob model: same clamp, same turn-glow, same jets wake rule
+    // as the firmware. Nothing goes on any wire.
+    predicted[id] = Math.max(0, Math.min(255, predicted[id] + rawDelta));
+    previewHeat[id] = 255;
+    if (id === 15) previewJetsAwake = true;   // ENC_JETS_CENTER wakes the rack
+    if (knobControls[id]) knobControls[id].display(predicted[id]);
+    return;
+  }
+  if (!link.connected) return;
   pendingDelta[id] += rawDelta;
   predicted[id] = Math.max(0, Math.min(255, predicted[id] + rawDelta));
   if (knobControls[id]) knobControls[id].display(predicted[id]);
@@ -939,6 +985,9 @@ const TRANSITION_ESTIMATE_MS = 5000; // TRANSITION_MS in render_core.h, bar only
 function modeName(m) { return m === 0 ? "IDLE" : m === 1 ? "ACTIVE" : "?"; }
 
 function encodersLocked() {
+  // Preview mirrors the firmware's rules: locked in IDLE and during the
+  // crossfade, live in ACTIVE.
+  if (previewOn) return previewMode !== 1 || previewTransitioning();
   // Locked in IDLE too: the firmware discards encoder deltas there, so an
   // unlocked dial would just spin and snap back as status packets heal it.
   return !link.connected || boardMode !== 1 || boardTransitioning;
@@ -1008,6 +1057,7 @@ function attemptModeSend() {
 }
 
 function handleBoardStatus(payload) {
+  if (previewOn) return;   // board truth ignored while previewing
   boardMode = payload[16];
   const flags = payload[17];
   boardTransitioning = (flags & 1) !== 0;
@@ -1067,6 +1117,228 @@ function resetKnobMirror() {
       knobControls[knob.id].display(def);
     }
   }
+}
+
+// ===========================================================================
+// PREVIEW MODE: local render, no boards
+// A JS port of firmware/tub/render_core.h. The dials drive the encoder
+// positions, the mode buttons drive the state machine, and the same
+// per-pixel functions paint the viewer at 30fps. The board is still the
+// only truth: preview refuses to start while a link is up, and inbound
+// frames/status are ignored while it runs.
+// ===========================================================================
+
+let previewOn = false;
+let previewMode = 0;
+let previewFrom = 0;
+let previewXfadeT0 = 0;
+let previewJetsAwake = false;
+let previewTimer = null;
+let previewLastTick = 0;
+let previewUiState = "";
+const previewHeat = new Array(N_ENCODERS).fill(0);
+
+const PV_TRANSITION_MS = 5000;   // TRANSITION_MS in render_core.h
+const PV_IDLE_BRIGHT = 160;      // IDLE_BRIGHTNESS
+const PV_ACTIVE_BRIGHT = 200;    // ACTIVE_BRIGHTNESS
+
+function previewTransitioning() {
+  return previewFrom !== previewMode &&
+         (performance.now() - previewXfadeT0) < PV_TRANSITION_MS;
+}
+
+// --- Ports of the render_core.h pixel functions ----------------------------
+
+function pvIdle(strip, i, t) {
+  if (strip === 2) return [0, 0, 0];
+  const phase = strip === 1 ? 128 : 0;
+  const wave = fl.sin8(((i * 3) & 255) + ((t >> 4) & 255) + phase);
+  const hue = fl.scale8(wave, 56);
+  const breath = fl.sin8(((t >> 4) & 255) + phase);
+  const val = 25 + fl.scale8(breath, PV_IDLE_BRIGHT - 25);
+  return chsvToRgb(hue, 255, val);
+}
+
+function pvAmbient(strip, i, t) {
+  const phase = strip === 1 ? 128 : 0;
+  const hue = (((i * 2) & 255) + ((t >> 4) & 255) + phase) & 255;
+  const breath = fl.sin8(((t >> 6) & 255) + phase);
+  const val = 120 + fl.scale8(breath, PV_ACTIVE_BRIGHT - 120);
+  return chsvToRgb(hue, 240, val);
+}
+
+function pvPoleWater(i, t, coldPos, hotPos) {
+  const h = i;   // POLE_UP_IS_INCREASING 1: pixel 0 is the bottom
+  const mix = 128 + (hotPos >> 1) - (coldPos >> 1);
+  const cold = [0, 72, 255], hot = [255, 24, 0];
+  const c = [
+    fl.lerp8(cold[0], hot[0], mix),
+    fl.lerp8(cold[1], hot[1], mix),
+    fl.lerp8(cold[2], hot[2], mix),
+  ];
+  let wave = fl.sin8((((t >> 2) & 255) - ((h * 5) & 255) + 256) & 255);
+  wave = fl.scale8(wave, wave);
+  const flow = fl.qadd8(coldPos, hotPos);
+  const val = fl.qadd8(20, fl.scale8(wave, fl.scale8(flow, 235)));
+  // nscale8_video: scaled channels keep a floor of 1 while lit.
+  return c.map(ch => (ch && val) ? Math.min(255, ((ch * val) >> 8) + 1) : 0);
+}
+
+function pvStandardKnob(enc, sub, pos, heat) {
+  const segStart = sub * 85;
+  let val;
+  if (pos <= segStart) val = 40;                        // KNOB_FLOOR_BRIGHT
+  else {
+    const into = pos - segStart;
+    val = into >= 85 ? 220 : fl.lerp8(40, 220, into * 3);
+  }
+  const glow = fl.qadd8(heat, heat);
+  const baseSat = enc === 15 ? 0 : 255;                 // JC is the white knob
+  const sat = fl.qsub8(baseSat, fl.scale8(glow, 100));
+  val = fl.qadd8(val, fl.scale8(glow, 38));
+  return chsvToRgb(KNOB_HUES[enc], sat, val);
+}
+
+const PV_COLD_W = [0, 51, 127, 204, 255];
+const PV_HOT_W  = [255, 204, 128, 51, 0];
+const PV_FILTER_POS = [0, 85, 170, 255];
+const PV_JETS_CHAIN = [13, 14, 15, 11, 12];
+
+function pvFaucetTemp(i, coldPos, hotPos) {
+  return [fl.scale8(PV_HOT_W[i], hotPos), 0, fl.scale8(PV_COLD_W[i], coldPos)];
+}
+
+function pvFaucetFilter(i, pos) {
+  const dist = Math.abs(pos - PV_FILTER_POS[i]);
+  const drop = dist * 2;
+  const peak = drop >= 255 ? 0 : 255 - drop;
+  return chsvToRgb(0, 0, peak < 24 ? 24 : peak);
+}
+
+function pvActivePanel(i, t) {
+  if (i < 9) {
+    if (i < 5) return pvFaucetTemp(i, predicted[0], predicted[1]);
+    return pvFaucetFilter(i - 5, predicted[2]);
+  }
+  if (i >= 33) {
+    const local = i - 33;
+    if (!previewJetsAwake) return pvAmbient(0, (local * 4) & 255, t);
+    const knobIdx = Math.floor(local / 3);
+    let sub = local % 3;
+    if (knobIdx === 2) sub = 2 - sub;                   // JC runs reversed
+    const enc = PV_JETS_CHAIN[knobIdx];
+    return pvStandardKnob(enc, sub, predicted[enc], previewHeat[enc]);
+  }
+  const local = i - 9;
+  const knobIdx = Math.floor(local / 3);
+  let sub = local % 3;
+  if ((knobIdx & 3) >= 2) sub = 2 - sub;                // serpentine second row
+  const enc = 3 + knobIdx;
+  return pvStandardKnob(enc, sub, predicted[enc], previewHeat[enc]);
+}
+
+function pvPixel(mode, strip, idx, t) {
+  if (mode === 0) return pvIdle(strip, idx, t);
+  if (strip === 2) return pvActivePanel(idx, t);
+  if (strip === 1) return pvPoleWater(idx, t, predicted[0], predicted[1]);
+  return pvAmbient(strip, idx, t);
+}
+
+// --- Preview frame loop ----------------------------------------------------
+
+function previewFrame() {
+  const now = performance.now();
+  const dt = now - previewLastTick;
+  previewLastTick = now;
+
+  // Turn-glow decays 255 -> 0 over ~500ms, mirroring the board.
+  const drop = Math.max(1, Math.round(dt * 255 / 500));
+  for (let i = 0; i < N_ENCODERS; i++) previewHeat[i] = Math.max(0, previewHeat[i] - drop);
+
+  const t = Math.round(now) & 0xFFFF;
+  let progress = 255;
+  if (previewFrom !== previewMode) {
+    progress = Math.min(255, Math.round((now - previewXfadeT0) * 255 / PV_TRANSITION_MS));
+    if (progress >= 255) previewFrom = previewMode;
+  }
+
+  const frame = new Uint8Array(DUMP_PAYLOAD_LEN);
+  for (let n = 0; n < N_TOTAL; n++) {
+    let strip, idx;
+    if (n < OFF_POLE)       { strip = 0; idx = n; }
+    else if (n < OFF_PANEL) { strip = 1; idx = n - OFF_POLE; }
+    else                    { strip = 2; idx = n - OFF_PANEL; }
+
+    let rgb;
+    if (progress === 255) rgb = pvPixel(previewMode, strip, idx, t);
+    else {
+      const a = pvPixel(previewFrom, strip, idx, t);
+      const b = pvPixel(previewMode, strip, idx, t);
+      rgb = [fl.lerp8(a[0], b[0], progress), fl.lerp8(a[1], b[1], progress), fl.lerp8(a[2], b[2], progress)];
+    }
+    frame[n * 3] = rgb[0]; frame[n * 3 + 1] = rgb[1]; frame[n * 3 + 2] = rgb[2];
+  }
+
+  lastFramebuffer = frame;
+  drawViewer();
+  updatePreviewUi();
+}
+
+function updatePreviewUi() {
+  const st = previewTransitioning() ? "xfade" : `mode${previewMode}`;
+  if (st === previewUiState) return;
+  previewUiState = st;
+  if (st === "xfade") {
+    showLockBar();
+    setModeStatusText(`PREVIEW: crossfading to ${modeName(previewMode)}, knobs locked`);
+  } else {
+    hideLockBar();
+    setModeStatusText(previewMode === 0
+      ? "PREVIEW mode: IDLE, knobs sleep until ACTIVE"
+      : "PREVIEW mode: ACTIVE, live");
+  }
+  refreshLockUi();
+  document.querySelectorAll("#mode-row .btn[data-mode]").forEach(b => {
+    b.classList.toggle("active", parseInt(b.dataset.mode, 10) === previewMode);
+  });
+}
+
+function setPreview(on) {
+  if (on && (link.connected || teensyLink.connected)) {
+    setModeStatusText("preview needs both board links dropped: board truth wins");
+    return;
+  }
+  previewOn = on;
+  document.getElementById("btn-preview").classList.toggle("active", on);
+  if (on) {
+    resetKnobMirror();
+    previewMode = 0; previewFrom = 0; previewXfadeT0 = 0;
+    previewJetsAwake = false;
+    previewHeat.fill(0);
+    previewUiState = "";
+    previewLastTick = performance.now();
+    previewTimer = setInterval(previewFrame, 33);
+  } else {
+    if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
+    hideLockBar();
+    lastFramebuffer = null;
+    drawViewer();
+    setModeStatusText("connect to begin");
+    refreshLockUi();
+    document.querySelectorAll("#mode-row .btn[data-mode]").forEach(b => b.classList.remove("active"));
+  }
+}
+
+function previewModeClick(mode) {
+  if (mode === previewMode) return;
+  // Mid-crossfade clicks restart cleanly from the current target, same
+  // spirit as the board ignoring duplicates but honoring reversals.
+  previewFrom = previewMode;
+  previewMode = mode;
+  previewXfadeT0 = performance.now();
+  previewJetsAwake = false;
+  previewHeat.fill(0);
+  resetKnobMirror();   // the board resets every knob to default on a mode change
 }
 
 // Draggable dial: real rotary encoders spin forever with no absolute
@@ -1200,6 +1472,10 @@ function buildModeUi() {
   const buttons = document.querySelectorAll("#mode-row .btn");
   buttons.forEach(btn => {
     btn.addEventListener("click", () => {
+      if (previewOn) {
+        previewModeClick(parseInt(btn.dataset.mode, 10));
+        return;
+      }
       if (!link.connected && !teensyLink.connected) {
         setModeStatusText("not connected");
         return;
@@ -1440,6 +1716,7 @@ let highlightedIndices = null;
 let lastFramebuffer = null;
 
 function renderFramebuffer(payload) {
+  if (previewOn) return;   // preview owns the viewer while it runs
   lastFramebuffer = payload;
   drawViewer();
 }
@@ -1776,6 +2053,8 @@ function init() {
     document.getElementById("serial-warning").style.display = "block";
     document.getElementById("btn-connect").disabled = true;
   }
+
+  document.getElementById("btn-preview").addEventListener("click", () => setPreview(!previewOn));
 
   document.getElementById("btn-connect").addEventListener("click", () => {
     if (link.connected) disconnect();
