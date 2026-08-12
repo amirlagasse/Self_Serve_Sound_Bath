@@ -1168,7 +1168,7 @@ function pvAmbient(strip, i, t) {
 }
 
 function pvPoleWater(i, t, coldPos, hotPos) {
-  const h = N_POLE - 1 - i;   // POLE_UP_IS_INCREASING 0: run starts at the top
+  const h = i;   // POLE_UP_IS_INCREASING 1: pixel 0 is the bottom, confirmed on hardware
   const mix = 128 + (hotPos >> 1) - (coldPos >> 1);
   const cold = [0, 72, 255], hot = [255, 24, 0];
   const c = [

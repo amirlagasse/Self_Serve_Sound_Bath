@@ -171,10 +171,10 @@ inline CRGB pixelActiveAmbient(uint8_t strip, uint8_t i, uint16_t t) {
 // faint trickle, taps cranked is full blast.
 // ===========================================================================
 
-// Direction flag for the climb. Flipped to 0 on 2026-08-11: on the real
-// pole the run starts at the TOP, so index must be reversed for pulses
-// to wash upward. Set back to 1 if a rewire changes the feed end.
-#define POLE_UP_IS_INCREASING 0
+// Direction flag for the climb. CONFIRMED on hardware 2026-08-11:
+// pixel 0 is at the BOTTOM of the stem, this stays 1. (A brief flip to
+// 0 made the water run the wrong way; do not "fix" this again.)
+#define POLE_UP_IS_INCREASING 1
 
 inline CRGB pixelPoleWater(uint8_t i, uint16_t t, uint8_t coldPos, uint8_t hotPos) {
 #if POLE_UP_IS_INCREASING
