@@ -104,11 +104,10 @@ const uint8_t KNOB_BASE_HUE[N_ENCODERS] PROGMEM = {
   160, 0, 140,          // faucet: cold(blue) hot(red) filter(sky), own renderers
   0, 22, 43, 64,        // enc 3-6, hot aux: red, orange, amber, yellow
   160, 143, 128, 180,   // enc 7-10, cold aux: blue, cyan, aqua, indigo
-  85, 192, 43, 149,     // jets corners: ORIGINAL colors restored per the
-                        // 2026-08-11 bench review (green, purple, orange,
-                        // azure). Note 43 repeats the hot rack's amber and
-                        // 149 sits near the cold rack's cyan; accepted,
-                        // different racks.
+  85, 192, 106, 216,    // jets corners, green/purple pairs per bench
+                        // review round 2: JUL green, JUR purple, JBL a
+                        // deeper green, JBR a pinker violet. Two shades
+                        // of each so the rack reads as matched pairs.
   0                     // JC: white, sat forced to 0 in pixelStandardKnob
 };
 
@@ -227,16 +226,18 @@ inline uint8_t bubbleBoost(uint8_t i, uint16_t t, uint8_t level) {
   uint8_t field   = scale8(patch, shimmer);
 
   // Only the crests pop: cut the floor away, then steepen what is left
-  // so bubbles read as distinct bits, not a global brightening.
-  uint8_t crest = qsub8(field, 140);
-  uint8_t pop   = qadd8(qadd8(crest, crest), crest);
+  // so bubbles read as distinct bits, not a global brightening. Cut at
+  // 128 with a x4 steepen: through the diffuser anything gentler
+  // vanished into the ambient rainbow (bench-tested, twice).
+  uint8_t crest = qsub8(field, 128);
+  uint8_t pop   = qadd8(qadd8(qadd8(crest, crest), crest), crest);
 
   // Response curve: linear-in-level was invisible below half travel.
-  // Concave rise (fast early, saturating late) plus an activation floor
-  // so the FIRST click already reads, then it keeps growing to extreme.
+  // Concave rise (fast early, saturating late) plus a strong activation
+  // floor so the FIRST click already reads, then grows to extreme.
   uint8_t inv = 255 - level;
   uint8_t eff = 255 - scale8(inv, inv);
-  eff = qadd8(eff, 40);
+  eff = qadd8(eff, 64);
 
   return scale8(pop, eff);
 }

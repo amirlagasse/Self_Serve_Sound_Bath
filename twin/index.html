@@ -414,8 +414,8 @@ const KNOBS = [
   { id: 10, label: "LBL (Bitcrush)",  rack: "auxl" },   // indigo, bottom-left
   { id: 11, label: "JUL (Pitch)",     rack: "jets" },   // green
   { id: 12, label: "JUR (Rate)",      rack: "jets" },   // purple
-  { id: 13, label: "JBL (Transient)", rack: "jets" },   // orange
-  { id: 14, label: "JBR (Flanger)",   rack: "jets" },   // azure
+  { id: 13, label: "JBL (Transient)", rack: "jets" },   // deep green
+  { id: 14, label: "JBR (Flanger)",   rack: "jets" },   // violet
   { id: 15, label: "JC (Volume)",     rack: "jets" },   // white
 ];
 
@@ -428,7 +428,7 @@ const KNOB_HUES = [
   160, 0, 140,
   0, 22, 43, 64,        // hot aux: red, orange, amber, yellow
   160, 143, 128, 180,   // cold aux: blue, cyan, aqua, indigo
-  85, 192, 43, 149,     // jets corners: original colors (green, purple, orange, azure)
+  85, 192, 106, 216,    // jets corners: green/purple pairs (JUL green, JUR purple, JBL deep green, JBR violet)
   0,                    // JC: white, special-cased below
 ];
 
@@ -1262,10 +1262,10 @@ function pvBubbleBoost(i, t, level) {
   const patch   = fl.sin8(((i * 5) & 255) + ((t >> 5) & 255));
   const shimmer = fl.sin8((((i * 11) & 255) - ((t >> 3) & 255) + 256) & 255);
   const field   = fl.scale8(patch, shimmer);
-  const crest   = fl.qsub8(field, 140);
-  const pop     = fl.qadd8(fl.qadd8(crest, crest), crest);
+  const crest   = fl.qsub8(field, 128);
+  const pop     = fl.qadd8(fl.qadd8(fl.qadd8(crest, crest), crest), crest);
   const inv = 255 - level;
-  const eff = fl.qadd8(255 - fl.scale8(inv, inv), 40);
+  const eff = fl.qadd8(255 - fl.scale8(inv, inv), 64);
   return fl.scale8(pop, eff);
 }
 
@@ -2005,7 +2005,7 @@ const PANEL_RACKS = {
   faucet: { start: 0,  count: N_FAUCET, title: "FAUCET",     build: () => detailLayoutFaucet() },
   auxr:   { start: 9,  count: N_AUXR,   title: "HOT AUX (RIGHT)",  build: () => detailLayoutAuxRack(AUX_RIGHT_PATTERN, ["RBL (3, red)", "RBR (4, orange)", "RUR (5, amber)", "RUL (6, yellow)"]) },
   auxl:   { start: 21, count: N_AUXL,   title: "COLD AUX (LEFT)",  build: () => detailLayoutAuxRack(AUX_LEFT_PATTERN, ["LUL (7, blue)", "LUR (8, cyan)", "LBR (9, aqua)", "LBL (10, indigo)"]) },
-  jets:   { start: 33, count: N_JETS,   title: "JACUZZI",    build: () => detailLayoutJets(["JBL (13, orange)", "JBR (14, azure)", "JC VOLUME (15, white)", "JUL (11, green)", "JUR (12, purple)"]) },
+  jets:   { start: 33, count: N_JETS,   title: "JACUZZI",    build: () => detailLayoutJets(["JBL (13, deep green)", "JBR (14, violet)", "JC VOLUME (15, white)", "JUL (11, green)", "JUR (12, purple)"]) },
 };
 
 function drawRackDetail(rackKey) {
