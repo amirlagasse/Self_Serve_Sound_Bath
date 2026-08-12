@@ -1273,14 +1273,8 @@ function pvPoleWithSpecs(i, t, coldPos, hotPos, level) {
   alpha = fl.scale8(alpha, eff);
   if (alpha === 0) return c;
 
-  const mix = 128 + (hotPos >> 1) - (coldPos >> 1);
-  const hot = [255, 24, 0], cold = [0, 72, 255];
-  let spec = [fl.lerp8(hot[0], cold[0], mix), fl.lerp8(hot[1], cold[1], mix), fl.lerp8(hot[2], cold[2], mix)];
-  const centered = Math.abs(mix - 128);
-  const whiteness = 255 - fl.qadd8(centered, centered);
-  spec = spec.map(ch => fl.lerp8(ch, 255, whiteness));
-
-  return [fl.lerp8(c[0], spec[0], alpha), fl.lerp8(c[1], spec[1], alpha), fl.lerp8(c[2], spec[2], alpha)];
+  // Plain white flecks.
+  return [fl.lerp8(c[0], 255, alpha), fl.lerp8(c[1], 255, alpha), fl.lerp8(c[2], 255, alpha)];
 }
 
 function pvPixel(mode, strip, idx, t) {

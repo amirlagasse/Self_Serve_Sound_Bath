@@ -243,15 +243,8 @@ inline CRGB pixelPoleWithSpecs(uint8_t i, uint16_t t,
   alpha = scale8(alpha, eff);
   if (alpha == 0) return c;
 
-  // Contrast color: the inverse of the water mix, pulled to white when
-  // the mix sits near center so flecks always stand out.
-  uint8_t mix = (uint8_t)(128 + (hotPos >> 1) - (coldPos >> 1));
-  CRGB spec = blend(CRGB(255, 24, 0), CRGB(0, 72, 255), mix);  // hot water -> blue fleck
-  uint8_t centered = (mix >= 128) ? (uint8_t)(mix - 128) : (uint8_t)(128 - mix);
-  uint8_t whiteness = 255 - qadd8(centered, centered);
-  spec = blend(spec, CRGB(255, 255, 255), whiteness);
-
-  return blend(c, spec, alpha);
+  // Plain white flecks (contrast-color idea tried and dropped same day).
+  return blend(c, CRGB(255, 255, 255), alpha);
 }
 
 // ===========================================================================
