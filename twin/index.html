@@ -394,7 +394,7 @@ const N_ENCODERS = 16;
 // chain) and 7-10 the LEFT rack, confirmed against hardware.
 //
 // NAMING SCHEME: faucet knobs are FL / FR / FC (left, right, center).
-// The aux racks are the OX racks: L* = cold ox (left), R* = hot ox
+// The aux racks: L* = cold aux (left), R* = hot aux
 // (right), then position UL / UR / BL / BR. The jets rack is the JACUZZI:
 // JUL / JUR / JBL / JBR around JC (center, the timer). Jacuzzi outer
 // positions are PROVISIONAL until the rack order is confirmed on
@@ -1356,8 +1356,8 @@ let poleHeadPos = null; // tip of the shower arm curve, for the nozzle marker
   for (let i = jetsStart + 6; i < jetsStart + 9; i++) pixelMarker[i] = "center";
 
   panelLabels.push({ text: "FAUCET", x: centerX, y: groupY - 16 });
-  panelLabels.push({ text: "COLD OX", x: centerX - auxCx, y: groupY - 28 });
-  panelLabels.push({ text: "HOT OX",  x: centerX + auxCx, y: groupY - 28 });
+  panelLabels.push({ text: "COLD AUX", x: centerX - auxCx, y: groupY - 28 });
+  panelLabels.push({ text: "HOT AUX",  x: centerX + auxCx, y: groupY - 28 });
   panelLabels.push({ text: "JACUZZI", x: jetsX, y: jetsY - 2 * 30 - 14 });
   panelLabels.push({ text: "JC=timer", x: jetsX + 26, y: jetsY + 4, small: true });
 })();
@@ -1642,8 +1642,8 @@ function detailLayoutAuxRack(pattern, names) {
 
 const PANEL_RACKS = {
   faucet: { start: 0,  count: N_FAUCET, title: "FAUCET",     build: () => detailLayoutFaucet() },
-  auxr:   { start: 9,  count: N_AUXR,   title: "HOT OX (RIGHT)",  build: () => detailLayoutAuxRack(AUX_RIGHT_PATTERN, ["RBL (3, red)", "RBR (4, green)", "RUR (5, purple)", "RUL (6, yellow)"]) },
-  auxl:   { start: 21, count: N_AUXL,   title: "COLD OX (LEFT)",  build: () => detailLayoutAuxRack(AUX_LEFT_PATTERN, ["LUL (7, blue)", "LUR (8, orange)", "LBR (9, aqua)", "LBL (10, pink)"]) },
+  auxr:   { start: 9,  count: N_AUXR,   title: "HOT AUX (RIGHT)",  build: () => detailLayoutAuxRack(AUX_RIGHT_PATTERN, ["RBL (3, red)", "RBR (4, green)", "RUR (5, purple)", "RUL (6, yellow)"]) },
+  auxl:   { start: 21, count: N_AUXL,   title: "COLD AUX (LEFT)",  build: () => detailLayoutAuxRack(AUX_LEFT_PATTERN, ["LUL (7, blue)", "LUR (8, orange)", "LBR (9, aqua)", "LBL (10, pink)"]) },
   jets:   { start: 33, count: N_JETS,   title: "JACUZZI",    build: () => detailLayoutJets(["JBL (13)", "JBR (14)", "JC TIMER (15)", "JUL (11)", "JUR (12)"]) },
 };
 
