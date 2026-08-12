@@ -100,6 +100,9 @@ void resetEncoderPositions() {
       case ENC_FAUCET_FILTER:    // MIDI 64, center detent
       case ENC_PITCH_HOT:        // MIDI 64
       case ENC_PITCH_COLD:       // MIDI 64
+      case ENC_JETS_PITCH:       // MIDI 64
+      case ENC_JETS_RATE:        // MIDI 64
+      case ENC_JETS_TRANSIENT:   // MIDI 64
         encPos[i] = 128;
         break;
       default:

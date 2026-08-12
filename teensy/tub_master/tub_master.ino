@@ -91,13 +91,16 @@ const uint16_t BATCH_MS = 25;
 // here. Exit hold matching at 5s is an assumption. Tune once the tub is
 // real. See docs/OPEN_QUESTIONS.md item 12.
 
-const uint16_t      PRESENCE_MM   = 700;
+const uint16_t      PRESENCE_MM   = 900;
 // Asymmetric on purpose: wake fast, sleep reluctantly. The sensor throws
 // occasional long reads while someone is sitting still, and a symmetric
 // short exit hold let those flip the tub to IDLE mid-soak. Any "present"
 // blip during the exit countdown resets it.
 const unsigned long ENTER_HOLD_MS = 3000;
-const unsigned long EXIT_HOLD_MS  = 10000;
+// 5s exit per Amir 2026-08-11: 10s felt too long. Still safe against the
+// sensor's occasional long reads because any present blip resets the
+// countdown; only 5 full seconds of continuous absence exits.
+const unsigned long EXIT_HOLD_MS  = 5000;
 const uint32_t      TOF_PERIOD_MS = 50;
 
 VL53L1X tof;
@@ -148,23 +151,26 @@ struct KnobConfig {
 
 // stepsPerRange 16: full travel in under one rotation of a 20-detent
 // knob. Was 80 (4 rotations), dropped 5x on request: felt way too slow.
+// Full mapping confirmed with Nile 2026-08-11. Hot and cold racks are
+// mirror images: same param under the same hand position on each side.
+// JC is percussion master volume, the old "timer" idea is dropped.
 KnobConfig knobCfg[N_ENCODERS] = {
-  { 16, 64 },   // 0  FL cold
-  { 16, 64 },   // 1  FR hot
-  { 16, 64 },   // 2  FC filter (center detent behavior)
-  { 16, 0  },   // 3  RBL transform x
-  { 16, 0  },   // 4  RBR ???
-  { 16, 64 },   // 5  RUR pitch
-  { 16, 0  },   // 6  RUL ???
-  { 16, 64 },   // 7  LUL pitch
-  { 16, 0  },   // 8  LUR ???
-  { 16, 0  },   // 9  LBR transform x
-  { 16, 0  },   // 10 LBL ???
-  { 16, 0  },   // 11 JUL (provisional position)
-  { 16, 0  },   // 12 JUR (provisional position)
-  { 16, 0  },   // 13 JBL (provisional position)
-  { 16, 0  },   // 14 JBR (provisional position)
-  { 16, 0  },   // 15 JC jacuzzi center / timer
+  { 16, 64 },   // 0  FL cold blend (volume of cold pads, tracks 3-4)
+  { 16, 64 },   // 1  FR hot blend (volume of hot pads, tracks 1-2)
+  { 16, 64 },   // 2  FC filter, left LP / right HP, 64 = open (center detent)
+  { 16, 0  },   // 3  RBL reverb, hot (Valhalla)
+  { 16, 0  },   // 4  RBR bitcrush, hot (Logic Bitcrusher)
+  { 16, 64 },   // 5  RUR pitch, hot (AU Pitch)
+  { 16, 0  },   // 6  RUL mod x, hot (Alchemy)
+  { 16, 64 },   // 7  LUL pitch, cold (AU Pitch)
+  { 16, 0  },   // 8  LUR mod x, cold (Alchemy)
+  { 16, 0  },   // 9  LBR reverb, cold (Valhalla)
+  { 16, 0  },   // 10 LBL bitcrush, cold (Logic Bitcrusher)
+  { 16, 64 },   // 11 JUL percussion pitch (AU Pitch)
+  { 16, 64 },   // 12 JUR percussion rate/speed
+  { 16, 64 },   // 13 JBL percussion transients (Chimera)
+  { 16, 0  },   // 14 JBR percussion flanger
+  { 16, 0  },   // 15 JC percussion volume, silent until turned up
 };
 
 // Authoritative knob positions in steps, plus the last derived values so
@@ -336,7 +342,10 @@ void changeMode(uint8_t mode) {
   // section 5): the Uno resets its positions on the message, and every
   // knob position resets here. Stale ticks must not leak across.
   resetKnobPositions();
-  if (mode == MODE_ACTIVE) midiSendSnapshot();
+  // Snapshot on EVERY transition: the spec requires each CC transmitted
+  // once at its default on the way back to IDLE, and ACTIVE starts from
+  // the same defaults, so both directions send the same picture.
+  midiSendSnapshot();
 
 #if SIM_INPUTS
   sweepPos = 128;
@@ -715,13 +724,14 @@ void setup() {
     encoders[i] = new Encoder(ENC_PINS[i][0], ENC_PINS[i][1]);
   }
   resetKnobPositions();
+  midiSendSnapshot();   // spec: every CC transmitted once at default on boot
 
   Wire.begin();
   Wire.setClock(400000);
   tof.setTimeout(500);
   if (tof.init()) {
     tofOk = true;
-    tof.setDistanceMode(VL53L1X::Short);        // plenty for a 700mm threshold
+    tof.setDistanceMode(VL53L1X::Short);        // good to ~1.3m, covers the 900mm threshold
     tof.setMeasurementTimingBudget(33000);
     tof.startContinuous(TOF_PERIOD_MS);
     Serial.println("tof: VL53L1X initialized, short range mode, 50ms period");

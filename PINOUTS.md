@@ -2,6 +2,8 @@
 
 Everything needed to assemble the tub electronics. Matches the firmware as flashed; do not improvise pin choices, the code expects exactly these.
 
+MIDI setup (CC numbers, defaults, Logic mapping) lives in `MIDI.md`.
+
 ## The three boxes
 
 | Thing | Powered by | Connects to |

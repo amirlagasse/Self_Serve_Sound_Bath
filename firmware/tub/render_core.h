@@ -59,15 +59,24 @@ enum Strip : uint8_t { S_UNDER = 0, S_POLE = 1, S_PANEL = 2 };
 #define ENC_AUXR_FIRST     3    // 3,4,5,6: RIGHT rack, chain order BL,BR,TR,TL
 #define ENC_AUXL_FIRST     7    // 7,8,9,10: LEFT rack, chain order TL,TR,BR,BL
 
-// Sound-side knob names (from Nile). The right aux is the HOT aux, the
-// left aux is the COLD aux. Unnamed knobs (4, 6, 8, 10) are still TBD.
+// Sound-side knob names, full mapping confirmed with Nile 2026-08-11.
+// The right aux is the HOT aux, the left aux is the COLD aux; the racks
+// are mirror images (same param under the same hand position each side).
 // MIDI defaults are 0-127; rotation units are 0-255, exactly double.
-#define ENC_TRANSFORM_HOT   3   // Transform X, hot aux bottom-left,  default 0
-#define ENC_PITCH_HOT       5   // Pitch,       hot aux top-right,    default 128
-#define ENC_PITCH_COLD      7   // Pitch,       cold aux top-left,    default 128
-#define ENC_TRANSFORM_COLD  9   // Transform X, cold aux bottom-right, default 0
+#define ENC_REVERB_HOT      3   // Reverb,   hot aux bottom-left,   default 0
+#define ENC_BITCRUSH_HOT    4   // Bitcrush, hot aux bottom-right,  default 0
+#define ENC_PITCH_HOT       5   // Pitch,    hot aux top-right,     default 128
+#define ENC_MODX_HOT        6   // Mod X,    hot aux top-left,      default 0
+#define ENC_PITCH_COLD      7   // Pitch,    cold aux top-left,     default 128
+#define ENC_MODX_COLD       8   // Mod X,    cold aux top-right,    default 0
+#define ENC_REVERB_COLD     9   // Reverb,   cold aux bottom-right, default 0
+#define ENC_BITCRUSH_COLD  10   // Bitcrush, cold aux bottom-left,  default 0
+#define ENC_JETS_PITCH     11   // JUL, percussion pitch,      default 128
+#define ENC_JETS_RATE      12   // JUR, percussion rate,       default 128
+#define ENC_JETS_TRANSIENT 13   // JBL, percussion transients, default 128
+#define ENC_JETS_FLANGER   14   // JBR, percussion flanger,    default 0
 #define ENC_JETS_FIRST    11    // 11,12,13,14
-#define ENC_JETS_CENTER   15    // the jets "timer" knob
+#define ENC_JETS_CENTER   15    // JC, percussion volume, default 0 (timer idea dropped)
 
 #define N_ENCODERS        16
 
@@ -145,6 +154,52 @@ inline CRGB pixelActiveAmbient(uint8_t strip, uint8_t i, uint16_t t) {
   uint8_t val = 120 + scale8(breath, ACTIVE_BRIGHTNESS - 120);
 
   return CHSV(hue, 240, val);
+}
+
+// ===========================================================================
+// ACTIVE MODE: POLE (faucet stem / showerhead)
+// Water climbing the pipe. Color mixes the two faucet knobs: majority
+// cold reads blue, majority hot reads red, an even split reads as a
+// violet blend. Brightness pulses travel up the stem like slugs of
+// water, and the combined knob travel sets the flow: taps low is a
+// faint trickle, taps cranked is full blast.
+// ===========================================================================
+
+// Pole pixel 0 is assumed to be at the BOTTOM of the stem, so pulses
+// climb toward higher indices. If the lamp test shows the run starts at
+// the top, set this to 0 to flip the direction.
+#define POLE_UP_IS_INCREASING 1
+
+inline CRGB pixelPoleWater(uint8_t i, uint16_t t, uint8_t coldPos, uint8_t hotPos) {
+#if POLE_UP_IS_INCREASING
+  uint8_t h = i;
+#else
+  uint8_t h = (uint8_t)(N_POLE - 1 - i);
+#endif
+
+  // Majority mix with no division: even knobs sit at 128, all-hot 255,
+  // all-cold 0. Positions are 0-255 rotation units so >>1 cannot wrap.
+  uint8_t mix = (uint8_t)(128 + (hotPos >> 1) - (coldPos >> 1));
+
+  // Cold water blue against hot water red-orange.
+  CRGB c = blend(CRGB(0, 72, 255), CRGB(255, 24, 0), mix);
+
+  // Travelling pulse. (t >> 2) mod 256 advances ~250 units/s against a
+  // 5-unit-per-pixel spatial ramp: peaks climb ~50 px/s, about 2 seconds
+  // bottom to top, roughly two slugs visible on the run at once.
+  // Squaring the sine sharpens the slugs. Wraps clean at t rollover
+  // because 65536 >> 2 is a multiple of 256.
+  uint8_t wave = sin8((uint8_t)(t >> 2) - (uint8_t)(h * 5));
+  wave = scale8(wave, wave);
+
+  // Flow: how hard the pulses hit. qadd8 saturates, so the default
+  // 128 + 128 already reads as full water. The floor keeps the stem
+  // faintly water-colored even with both taps shut.
+  uint8_t flow = qadd8(coldPos, hotPos);
+  uint8_t val = qadd8(20, scale8(wave, scale8(flow, 235)));
+
+  c.nscale8_video(val);
+  return c;
 }
 
 // ===========================================================================
@@ -315,7 +370,10 @@ inline CRGB pixelForMode(uint8_t mode, uint8_t strip, uint8_t i,
   if (strip == S_PANEL) {                         // ACTIVE panel
     return pixelActivePanel(i, encPos, turnHeat, t, jetsAwake);
   }
-  return pixelActiveAmbient(strip, i, t);         // ACTIVE pole / underlight
+  if (strip == S_POLE) {                          // ACTIVE pole: water climb
+    return pixelPoleWater(i, t, encPos[ENC_FAUCET_COLD], encPos[ENC_FAUCET_HOT]);
+  }
+  return pixelActiveAmbient(strip, i, t);         // ACTIVE underlight
 }
 
 // Render the entire framebuffer for one frame.
